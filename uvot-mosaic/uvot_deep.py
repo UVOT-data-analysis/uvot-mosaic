@@ -105,10 +105,12 @@ def uvot_deep(input_folders,
             # scattered light images
             scattered_light(obs, filt, teldef[filt])
 
-            # mask image (including masking the exposure maps)
-            mask_image(obs, filt)
+            # mask images (including masking the exposure maps)
+            mask_image(obs, filt, teldef[filt])
             
-            # 
+            # LSS images
+
+            
             pdb.set_trace()
 
 
@@ -116,7 +118,7 @@ def uvot_deep(input_folders,
 def scattered_light(obs_folder, obs_filter, teldef_file):
 
     """
-    Create a scattered light image with the same orientation as the input snapshot
+    Create scattered light images with the same orientation as the input snapshots
 
     Parameters
     ----------
@@ -175,16 +177,57 @@ def scattered_light(obs_folder, obs_filter, teldef_file):
             
 
         # write out all of the compiled SL images
-        hdu_sl.writeto('sw'+obs_folder+'u'+obs_filter+'.sl', overwrite=True)
+        hdu_sl.writeto(obs_folder+'/uvot/image/sw'+obs_folder+'u'+obs_filter+'.sl', overwrite=True)
 
     subprocess.run('rm .nfs*', shell=True)
-    pdb.set_trace()
     
 
 
 
 
+def mask_image(obs_folder, obs_filter, teldef_file):
 
+    """
+    Create a bad pixel map, and use that to create mask images and masked exposure maps
+
+    Parameters
+    ----------
+    obs_folder : string
+        the 11-digit name of the folder downloaded from HEASARC
+
+    obs_filter : string
+        one of the UVOT filters ['w2','m2','w1','uu','bb','vv']
+    
+    teldef_file : string
+        full path+name for the teldef file
+
+
+    Returns
+    -------
+    nothing
+
+    """
+
+    # counts image (labeled as sk)
+    sk_image = obs_folder+'/uvot/image/sw'+obs_folder+'u'+obs_filter+'_sk.img'
+    #exposure image
+    ex_image = obs_folder+'/uvot/image/sw'+obs_folder+'u'+obs_filter+'_ex.img'
+    # attitude files
+    att_uat = obs_folder+'/auxil/sw'+obs_folder+'uat.fits'
+    att_sat = obs_folder+'/auxil/sw'+obs_folder+'sat.fits'
+
+
+    # make bad pixel map
+    bad_pix = obs_folder+'/uvot/image/sw'+obs_folder+'u'+obs_filter+'.badpix'
+    subprocess.run('uvotbadpix infile='+sk_image + ' badpixlist=CALDB' + \
+                   ' outfile='+bad_pix + ' clobber=yes', shell=True)
+
+    # regenerate exposure maps
+    ex_image_new = obs_folder+'/uvot/image/sw'+obs_folder+'u'+obs_filter+'_ex_mask.img'
+    mask_image = obs_folder+'/uvot/image/sw'+obs_folder+'u'+obs_filter+'_mask.img'
+    cmd = 'uvotexpmap infile='+sk_image + ' outfile='+ex_image_new + ' maskfile='+mask_image + \
+          ' badpixfile='+bad_pix + ' method=MEANFOV attfile='+att_sat + ' teldeffile='+teldef_file + \
+          ' masktrim=25 clobber=yes'
 
 
 
