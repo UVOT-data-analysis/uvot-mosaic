@@ -88,12 +88,13 @@ def uvot_deep(input_folders,
 
         # dictionary to hold information about each image
         image_info = {'aspect_corr':[],'binning':[],'exposure':[],'frame_time':[],'extension':[],
-                          'sk_image':[],'exp_image':[],'exp_image_mask':[],
+                          'sk_image':[],'sk_image_corr':[],'exp_image':[],'exp_image_mask':[],
                           'lss_image':[],'mask_image':[],'sl_image':[] }
 
         for obs in obs_list:
 
-            # --- 1. create all of the images
+            # --- 1. create the mask & LSS & scattered light images,
+            #        and correct the counts and exposure images
             
             # counts image (labeled as sk)
             sk_image = obs+'/uvot/image/sw'+obs+'u'+filt+'_sk.img'
@@ -112,17 +113,16 @@ def uvot_deep(input_folders,
             # scattered light images
             #scattered_light(obs, filt, teldef[filt])
 
-            # mask images (including masking the exposure maps)
+            # mask and bad pixel images (which also fixes the exposure map)
             mask_image(obs, filt, teldef[filt])
-
-            pdb.set_trace()
             
             # LSS images
-            lss_image(obs, filt)
+            #lss_image(obs, filt)
 
-            # do corrections to sky images (LSS, mask, 
-            #corr_sk(obs, filt)
+            # do corrections to sky images (LSS, mask) 
+            corr_sk(obs, filt)
 
+            pdb.set_trace()
 
             # --- 2. assemble info about each extension in this observation
 
@@ -134,6 +134,7 @@ def uvot_deep(input_folders,
                     image_info['frame_time'].append(hdu_sk[i].header['FRAMTIME'])
                     image_info['extension'].append(i)
                     image_info['sk_image'].append(sk_image)
+                    image_info['sk_image_corr'].append(obs+'/uvot/image/sw'+obs+'u'+filt+'_sk_corr.img')
                     image_info['exp_image'].append(ex_image)
                     image_info['exp_image_mask'].append(obs+'/uvot/image/sw'+obs+'u'+filt+'_ex_mask.img')
                     image_info['lss_image'].append(obs+'/uvot/image/sw'+obs+'u'+filt+'.lss')
@@ -254,18 +255,51 @@ def mask_image(obs_folder, obs_filter, teldef_file):
     att_sat = obs_folder+'/auxil/sw'+obs_folder+'sat.fits'
 
 
-    # make bad pixel map
+    # make bad pixel map (detector coordinates)
     bad_pix = obs_folder+'/uvot/image/sw'+obs_folder+'u'+obs_filter+'.badpix'
     subprocess.run('uvotbadpix infile='+sk_image + ' badpixlist=CALDB' + \
                    ' outfile='+bad_pix + ' clobber=yes', shell=True)
 
     # regenerate exposure maps
+    # makes two images:
+    # - mask image (wcs image)
+    # - exposure map (wcs image) with bad pixels as NaN
     ex_image_new = obs_folder+'/uvot/image/sw'+obs_folder+'u'+obs_filter+'_ex_mask.img'
     mask_image = obs_folder+'/uvot/image/sw'+obs_folder+'u'+obs_filter+'_mask.img'
     cmd = 'uvotexpmap infile='+sk_image + ' outfile='+ex_image_new + ' maskfile='+mask_image + \
           ' badpixfile='+bad_pix + ' method=MEANFOV attfile='+att_sat + ' teldeffile='+teldef_file + \
           ' masktrim=25 clobber=yes'
     subprocess.run(cmd, shell=True)
+
+    # create an exposure map with 0 at both the bad pixels and masked areas
+    with fits.open(ex_image_new) as hdu_ex, fits.open(mask_image) as hdu_mask:
+
+        # create HDU for the improved exposure map
+        hdu_ex_new = fits.HDUList()
+        # create HDU for the corresponding mask image
+        hdu_mask_new = fits.HDUList()
+        
+        # copy over the primary headers
+        hdu_ex_new.append(fits.PrimaryHDU(header=hdu_ex[0].header))
+        hdu_mask_new.append(fits.PrimaryHDU(header=hdu_mask[0].header))
+
+        # for each image extension, make the new images
+        for i in range(1,len(hdu_ex)):
+
+            new_mask_array = hdu_mask[i].data
+            new_mask_array[np.isnan(hdu_ex[i].data)] = 0
+
+            new_ex_array = hdu_ex[i].data
+            new_ex_array[new_mask_array == 0] = 0
+                       
+            # append them to the big fits files
+            hdu_ex_new.append(fits.ImageHDU(data=new_ex_array, header=hdu_ex[i].header))
+            hdu_mask_new.append(fits.ImageHDU(data=new_mask_array, header=hdu_mask[i].header))
+
+    # write out the new fits files
+    hdu_ex_new.writeto(ex_image_new, overwrite=True)
+    hdu_mask_new.writeto(mask_image, overwrite=True)
+  
 
 
 def lss_image(obs_folder, obs_filter):
@@ -303,6 +337,64 @@ def lss_image(obs_folder, obs_filter):
                    ' attfile='+att_sat +' clobber=yes', shell=True)
                    
 
+
+
+
+
+def corr_sk(obs_folder, obs_filter):
+
+    """
+    Correct counts images for LSS and mask them
+
+    counts_new = counts_old / lss * mask
+
+
+    Parameters
+    ----------
+    obs_folder : string
+        the 11-digit name of the folder downloaded from HEASARC
+
+    obs_filter : string
+        one of the UVOT filters ['w2','m2','w1','uu','bb','vv']
+    
+
+    Returns
+    -------
+    nothing
+
+    """
+
+    # counts image (labeled as sk)
+    sk_image = obs_folder+'/uvot/image/sw'+obs_folder+'u'+obs_filter+'_sk.img'
+    # LSS image
+    lss_image = obs_folder+'/uvot/image/sw'+obs_folder+'u'+obs_filter+'.lss'
+    # mask image
+    mask_image = obs_folder+'/uvot/image/sw'+obs_folder+'u'+obs_filter+'_mask.img'
+
+    
+    with fits.open(sk_image) as hdu_sk, fits.open(lss_image) as hdu_lss, fits.open(mask_image) as hdu_mask:
+
+        # create HDU for the new counts image
+        hdu_sk_new = fits.HDUList()
+        # copy over the primary header
+        hdu_sk_new.append(fits.PrimaryHDU(header=hdu_sk[0].header))
+
+        # for each image extension, make the new image
+        for i in range(1,len(hdu_sk)):
+            
+            # divide by lss and multiply by mask
+            new_sk_array = hdu_sk[i].data / hdu_lss[i].data * hdu_mask[i].data
+
+            # remove NaNs from dividing by 0
+            new_sk_array[np.isnan(new_sk_array)] = 0
+ 
+            # append to the big fits file
+            hdu_sk_new.append(fits.ImageHDU(data=new_sk_array, header=hdu_sk[i].header))
+
+    # write out the new fits file
+    sk_image_corr = obs_folder+'/uvot/image/sw'+obs_folder+'u'+obs_filter+'_sk_corr.img'
+    hdu_sk_new.writeto(sk_image_corr, overwrite=True)
+            
 
     
 
