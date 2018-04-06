@@ -86,8 +86,15 @@ def uvot_deep(input_folders,
         # get the images that have observations in that filter
         obs_list = [im for im in filter_exist.keys() if filt in filter_exist[im]]
 
+        # dictionary to hold information about each image
+        image_info = {'aspect_corr':[],'binning':[],'exposure':[],'frame_time':[],'extension':[],
+                          'sk_image':[],'exp_image':[],'exp_image_mask':[],
+                          'lss_image':[],'mask_image':[],'sl_image':[] }
+
         for obs in obs_list:
 
+            # --- 1. create all of the images
+            
             # counts image (labeled as sk)
             sk_image = obs+'/uvot/image/sw'+obs+'u'+filt+'_sk.img'
             # exposure image
@@ -103,15 +110,44 @@ def uvot_deep(input_folders,
 
 
             # scattered light images
-            scattered_light(obs, filt, teldef[filt])
+            #scattered_light(obs, filt, teldef[filt])
 
             # mask images (including masking the exposure maps)
             mask_image(obs, filt, teldef[filt])
+
+            pdb.set_trace()
             
             # LSS images
+            lss_image(obs, filt)
 
+            # do corrections to sky images (LSS, mask, 
+            #corr_sk(obs, filt)
+
+
+            # --- 2. assemble info about each extension in this observation
+
+            with fits.open(sk_image) as hdu_sk:
+                for i in range(1,len(hdu_sk)):
+                    image_info['aspect_corr'].append(hdu_sk[i].header['ASPCORR'])
+                    image_info['binning'].append(hdu_sk[i].header['BINX'])
+                    image_info['exposure'].append(hdu_sk[i].header['EXPOSURE'])
+                    image_info['frame_time'].append(hdu_sk[i].header['FRAMTIME'])
+                    image_info['extension'].append(i)
+                    image_info['sk_image'].append(sk_image)
+                    image_info['exp_image'].append(ex_image)
+                    image_info['exp_image_mask'].append(obs+'/uvot/image/sw'+obs+'u'+filt+'_ex_mask.img')
+                    image_info['lss_image'].append(obs+'/uvot/image/sw'+obs+'u'+filt+'.lss')
+                    image_info['mask_image'].append(obs+'/uvot/image/sw'+obs+'u'+filt+'_mask.img')
+                    image_info['sl_image'].append(obs+'/uvot/image/sw'+obs+'u'+filt+'.sl')
+
+                    
+        # --- 3. make one file with ALL OF THE EXTENSIONS
+        
+        
+        # --- 4. stack all of the extensions together into one image
+                
             
-            pdb.set_trace()
+        pdb.set_trace()
 
 
 
@@ -177,7 +213,8 @@ def scattered_light(obs_folder, obs_filter, teldef_file):
             
 
         # write out all of the compiled SL images
-        hdu_sl.writeto(obs_folder+'/uvot/image/sw'+obs_folder+'u'+obs_filter+'.sl', overwrite=True)
+        sl_image = obs_folder+'/uvot/image/sw'+obs_folder+'u'+obs_filter+'.sl'
+        hdu_sl.writeto(sl_image, overwrite=True)
 
     subprocess.run('rm .nfs*', shell=True)
     
@@ -228,40 +265,46 @@ def mask_image(obs_folder, obs_filter, teldef_file):
     cmd = 'uvotexpmap infile='+sk_image + ' outfile='+ex_image_new + ' maskfile='+mask_image + \
           ' badpixfile='+bad_pix + ' method=MEANFOV attfile='+att_sat + ' teldeffile='+teldef_file + \
           ' masktrim=25 clobber=yes'
+    subprocess.run(cmd, shell=True)
 
 
-
-
-    
-def stuff(sk_image, ex_image, att_file, teldef_file):
+def lss_image(obs_folder, obs_filter):
 
     """
-    Create a scattered light image with the same orientation as the input snapshot
+    Create LSS images for each snapshot
 
     Parameters
     ----------
-    sk_image : string
-        path+name for the sky (counts) image
+    obs_folder : string
+        the 11-digit name of the folder downloaded from HEASARC
 
-    ex_image : string
-        path+name for the exposure map image
-
-    att_file : string
-        path+name for the attitude file
-
-    teldef_file : string
-        full path+name for the teldef file
-
+    obs_filter : string
+        one of the UVOT filters ['w2','m2','w1','uu','bb','vv']
+    
 
     Returns
     -------
-    image : array
-        the scattered light image
+    nothing
 
-    header : something
-        the header associated with that image
-    
     """
+
+    # counts image (labeled as sk)
+    sk_image = obs_folder+'/uvot/image/sw'+obs_folder+'u'+obs_filter+'_sk.img'
+    #exposure image
+    ex_image = obs_folder+'/uvot/image/sw'+obs_folder+'u'+obs_filter+'_ex.img'
+    # attitude files
+    att_uat = obs_folder+'/auxil/sw'+obs_folder+'uat.fits'
+    att_sat = obs_folder+'/auxil/sw'+obs_folder+'sat.fits'
+
+
+    # create LSS image
+    lss_image = obs_folder+'/uvot/image/sw'+obs_folder+'u'+obs_filter+'.lss'
+    subprocess.run('uvotskylss infile='+sk_image + ' outfile='+lss_image + \
+                   ' attfile='+att_sat +' clobber=yes', shell=True)
+                   
+
+
+    
 
 if __name__ == '__main__':
 
