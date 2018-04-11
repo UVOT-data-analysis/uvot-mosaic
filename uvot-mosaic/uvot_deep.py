@@ -70,6 +70,10 @@ def uvot_deep(input_folders,
         # list all of the sky images
         sk_list = glob.glob(i + '/uvot/image/*_sk.img')
 
+        # check that images exist
+        if len(sk_list) == 0:
+            print('No images found for input folder: ' + i)
+
         # grab the filter from the filename of each sky image
         for sk in sk_list:
             filter_name = sk[-9:-7]
@@ -85,6 +89,11 @@ def uvot_deep(input_folders,
 
         # get the images that have observations in that filter
         obs_list = [im for im in filter_exist.keys() if filt in filter_exist[im]]
+
+        # check that images exist
+        if len(obs_list) == 0:
+            print('No images found for filter: ' + filt)
+            continue
 
         # dictionary to hold information about each image
         image_info = {'aspect_corr':[],'binning':[],'exposure':[],'frame_time':[],'extension':[],
