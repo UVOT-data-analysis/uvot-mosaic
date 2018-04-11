@@ -91,8 +91,21 @@ def uvot_deep(input_folders,
                           'sk_image':[],'sk_image_corr':[],'exp_image':[],'exp_image_mask':[],
                           'lss_image':[],'mask_image':[],'sl_image':[] }
 
+        # initialize HDUs to hold all of the extensions
+        hdu_sk_all = fits.HDUList()
+        hdu_ex_all = fits.HDUList()
+        hdu_sl_all = fits.HDUList()
+        
+
         for obs in obs_list:
 
+            print('')
+            print('*************************************************************')
+            print('  observation ', obs, ', filter = ', filt)
+            print('*************************************************************')
+            print('')
+
+            
             # --- 1. create the mask & LSS & scattered light images,
             #        and correct the counts and exposure images
             
@@ -111,18 +124,17 @@ def uvot_deep(input_folders,
 
 
             # scattered light images
-            #scattered_light(obs, filt, teldef[filt])
+            scattered_light(obs, filt, teldef[filt])
 
             # mask and bad pixel images (which also fixes the exposure map)
             mask_image(obs, filt, teldef[filt])
             
             # LSS images
-            #lss_image(obs, filt)
+            lss_image(obs, filt)
 
             # do corrections to sky images (LSS, mask) 
             corr_sk(obs, filt)
 
-            pdb.set_trace()
 
             # --- 2. assemble info about each extension in this observation
 
@@ -142,13 +154,56 @@ def uvot_deep(input_folders,
                     image_info['sl_image'].append(obs+'/uvot/image/sw'+obs+'u'+filt+'.sl')
 
                     
-        # --- 3. make one file with ALL OF THE EXTENSIONS
-        
-        
-        # --- 4. stack all of the extensions together into one image
-                
+            # --- 3. make one file with ALL OF THE EXTENSIONS
             
-        pdb.set_trace()
+            with fits.open(image_info['sk_image_corr'][-1]) as hdu_sk_corr, \
+                 fits.open(image_info['exp_image_mask'][-1]) as hdu_ex_mask, \
+                 fits.open(image_info['sl_image'][-1]) as hdu_sl:
+
+                # if this is the first image, copy over the primary headers
+                if len(hdu_sk_all) == 0:
+                    hdu_sk_all.append(fits.PrimaryHDU(header=hdu_sk_corr[0].header))
+                    hdu_ex_all.append(fits.PrimaryHDU(header=hdu_ex_mask[0].header))
+                    hdu_sl_all.append(fits.PrimaryHDU(header=hdu_sl[0].header))
+
+                # if the binning is 2x2 and the aspect corrections are ok, append the arrays
+                for i in range(1,len(hdu_sk_corr)):
+                    dict_ind = 1+i-len(hdu_sk_corr)
+                    if (image_info['binning'][dict_ind] == 2) & \
+                       ((image_info['aspect_corr'][dict_ind] == 'DIRECT') | (image_info['aspect_corr'][dict_ind] == 'UNICORR')):
+                        hdu_sk_all.append(fits.ImageHDU(data=hdu_sk_corr[i].data, header=hdu_sk_corr[i].header))
+                        hdu_ex_all.append(fits.ImageHDU(data=hdu_ex_mask[i].data, header=hdu_ex_mask[i].header))
+                        hdu_sl_all.append(fits.ImageHDU(data=hdu_sl[i].data, header=hdu_sl[i].header))
+
+
+        # write out all of the combined extensions
+        hdu_sk_all.writeto(output_prefix + filt + '_sk_all.fits', overwrite=True)
+        hdu_ex_all.writeto(output_prefix + filt + '_ex_all.fits', overwrite=True)
+        hdu_sl_all.writeto(output_prefix + filt + '_sl_all.fits', overwrite=True)
+            
+                    
+        # --- 4. stack all of the extensions together into one image
+
+        print('')
+        print('  ** stacking images')
+        print('')
+        
+
+        # counts image
+        cmd = 'uvotimsum ' + output_prefix + filt + '_sk_all.fits ' + \
+              output_prefix + filt + '_sk.fits exclude=none clobber=yes'
+        subprocess.run(cmd, shell=True)
+
+        # exposure map
+        cmd = 'uvotimsum ' + output_prefix + filt + '_ex_all.fits ' + \
+              output_prefix + filt + '_ex.fits method=EXPMAP exclude=none clobber=yes'
+        subprocess.run(cmd, shell=True)
+
+        # make a count rate image too
+        with fits.open(output_prefix + filt + '_sk.fits') as hdu_sk, fits.open(output_prefix + filt + '_ex.fits') as hdu_ex:
+            cr_hdu = fits.PrimaryHDU(data=hdu_sk[1].data/hdu_ex[1].data, header=hdu_sk[1].header)
+            cr_hdu.writeto(output_prefix + filt + '_cr.fits', overwrite=True)
+            
 
 
 
@@ -175,6 +230,10 @@ def scattered_light(obs_folder, obs_filter, teldef_file):
 
     """
 
+    print('')
+    print('  ** scattered light images')
+    print('')
+
     # counts image (labeled as sk)
     sk_image = obs_folder+'/uvot/image/sw'+obs_folder+'u'+obs_filter+'_sk.img'
     # attitude files
@@ -200,7 +259,7 @@ def scattered_light(obs_folder, obs_filter, teldef_file):
             # create image
             skytime = '{:.7f}'.format( (hdu_sk[i].header['TSTART'] + hdu_sk[i].header['TSTOP'])/2 )
             cmd = 'swiftxform infile='+__ROOT__+'/scattered_light_images/scal_'+obs_filter+'_smooth_2x2.fits' + \
-                  ' outfile=temp.sl attfile=' + att_sat + ' teldeffile=' + teldef_file + ' method=AREA' + \
+                  ' outfile=temp.sl attfile='+att_uat + ' teldeffile=' + teldef_file + ' method=AREA' + \
                   ' to=sky clobber=yes bitpix=-32 ra='+ra_pnt + ' dec='+dec_pnt + ' roll='+roll_pnt + \
                   ' skytime=MET:'+skytime
             subprocess.run(cmd, shell=True)
@@ -245,6 +304,10 @@ def mask_image(obs_folder, obs_filter, teldef_file):
     nothing
 
     """
+    
+    print('')
+    print('  ** mask images')
+    print('')
 
     # counts image (labeled as sk)
     sk_image = obs_folder+'/uvot/image/sw'+obs_folder+'u'+obs_filter+'_sk.img'
@@ -267,7 +330,7 @@ def mask_image(obs_folder, obs_filter, teldef_file):
     ex_image_new = obs_folder+'/uvot/image/sw'+obs_folder+'u'+obs_filter+'_ex_mask.img'
     mask_image = obs_folder+'/uvot/image/sw'+obs_folder+'u'+obs_filter+'_mask.img'
     cmd = 'uvotexpmap infile='+sk_image + ' outfile='+ex_image_new + ' maskfile='+mask_image + \
-          ' badpixfile='+bad_pix + ' method=MEANFOV attfile='+att_sat + ' teldeffile='+teldef_file + \
+          ' badpixfile='+bad_pix + ' method=MEANFOV attfile='+att_uat + ' teldeffile='+teldef_file + \
           ' masktrim=25 clobber=yes'
     subprocess.run(cmd, shell=True)
 
@@ -322,6 +385,10 @@ def lss_image(obs_folder, obs_filter):
 
     """
 
+    print('')
+    print('  ** LSS images')
+    print('')
+
     # counts image (labeled as sk)
     sk_image = obs_folder+'/uvot/image/sw'+obs_folder+'u'+obs_filter+'_sk.img'
     #exposure image
@@ -334,7 +401,7 @@ def lss_image(obs_folder, obs_filter):
     # create LSS image
     lss_image = obs_folder+'/uvot/image/sw'+obs_folder+'u'+obs_filter+'.lss'
     subprocess.run('uvotskylss infile='+sk_image + ' outfile='+lss_image + \
-                   ' attfile='+att_sat +' clobber=yes', shell=True)
+                   ' attfile='+att_uat +' clobber=yes', shell=True)
                    
 
 
@@ -363,6 +430,10 @@ def corr_sk(obs_folder, obs_filter):
     nothing
 
     """
+
+    print('')
+    print('  ** correcting sk images')
+    print('')
 
     # counts image (labeled as sk)
     sk_image = obs_folder+'/uvot/image/sw'+obs_folder+'u'+obs_filter+'_sk.img'
