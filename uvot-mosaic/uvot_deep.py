@@ -170,10 +170,10 @@ def uvot_deep(input_folders,
                  fits.open(image_info['sl_image'][-1]) as hdu_sl:
 
                 # if this is the first image, copy over the primary headers
-                if len(hdu_sk_all) == 0:
-                    hdu_sk_all.append(fits.PrimaryHDU(header=hdu_sk_corr[0].header))
-                    hdu_ex_all.append(fits.PrimaryHDU(header=hdu_ex_mask[0].header))
-                    hdu_sl_all.append(fits.PrimaryHDU(header=hdu_sl[0].header))
+                #if len(hdu_sk_all) == 0:
+                #    hdu_sk_all.append(fits.PrimaryHDU(header=hdu_sk_corr[0].header))
+                #    hdu_ex_all.append(fits.PrimaryHDU(header=hdu_ex_mask[0].header))
+                #    hdu_sl_all.append(fits.PrimaryHDU(header=hdu_sl[0].header))
 
                 # if the binning is 2x2 and the aspect corrections are ok, append the arrays
                 for i in range(1,len(hdu_sk_corr)):
