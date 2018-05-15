@@ -17,7 +17,7 @@ You will also need the latest CALDB files.  Download/installation information is
 Installation of `uvot-mosaic`: Either download or clone the repository.  You can keep the code wherever you like as long as it's in your python path.
 
 
-Running
+Running `uvot_deep.py` to combine and stack images
 -------
 
 Download the desired images from HEASARC (<https://heasarc.gsfc.nasa.gov/cgi-bin/W3Browse/swift.pl>) and ensure that you've chosen to download both the UVOT and Swift Auxiliary data.  The downloads will be organized in folders named with the Observation ID (e.g., 00037723002), which is a combination of the target ID (00037723) and segment (002).  For all of the observations you wish to stack, put their folders in the same directory, and run `uvot_deep.py` from that directory.
@@ -56,3 +56,9 @@ It will also create files in `~/example/[obsid]/uvot/image` for each exposure, w
 - `sw[obsid]u[ff]_mask.img`: mask image
 - `sw[obsid]u[ff]_sk_corr.img`: sky (counts) image, corrected for LSS and masked
 - `sw[obsid]u[ff].sl`: scattered light image (assuming this option is enabled)
+
+
+Running `offset_mosaic.py` to adjust background for individual snapshots
+-------
+
+The background values in UVOT images are known to change, likely due to scattered light from the Earth/sun/moon, but sometimes also from UV-bright sources in or near the field of view.  `offset_mosaic.py` is being written to do offsets between snapshots to better account for this.
