@@ -55,6 +55,10 @@ def offset_mosaic(input_prefix,
 
     for filt in filter_list:
 
+        # ------------------------
+        # find unique target IDs, and stack those first
+        # ------------------------
+
         # open the images
         with fits.open(input_prefix + filt + '_sk_all.fits') as hdu_sk, fits.open(input_prefix + filt + '_ex_all.fits') as hdu_ex:
 
@@ -66,15 +70,19 @@ def offset_mosaic(input_prefix,
                 del hdu_ex[ind]
 
 
-            # ------------------------
-            # find unique target IDs, and stack those first
-            # ------------------------
 
             # all of the target IDs
-            target_id = np.array( [hdu_sk[i].header['TARG_ID'] for i in range(len(hdu_sk))] )
+            target_ids = np.array( [hdu_sk[i].header['TARG_ID'] for i in range(len(hdu_sk))] )
+            # chop it down to just the unique ones
+            target_ids = np.unique(target_ids)
 
            
-            for targ in np.unique(target_id):
+            for targ in target_ids:
+
+                print('')
+                print('##### stacking target ID ' + str(targ) + ' #####')
+                print('')
+
                 
                 # temp file to hold snapshots with current target ID
                 temp_hdu_sk = fits.HDUList()
@@ -100,8 +108,6 @@ def offset_mosaic(input_prefix,
 
                 # find the biweight of the overlapping areas
                 biweight_counts = calc_overlap_val(temp_hdu_sk, overlap_x, overlap_y)
-                print('biweights: ', biweight_counts)
-                pdb.set_trace()
 
                 # apply to the counts images
                 hdu_sk_corr = correct_sk(temp_hdu_sk, biweight_counts, temp_hdu_ex)
@@ -128,14 +134,145 @@ def offset_mosaic(input_prefix,
                 subprocess.run('rm targ_temp_*.fits', shell=True)
                 
                
-            # ------------------------
-            # combine the stacks
-            # ------------------------
+        # ------------------------
+        # combine the stacks
+        # ------------------------
 
-            
 
+        # output file names
+        output_file_sk = output_prefix + filt + '_sk.fits'
+        output_file_ex = output_prefix + filt + '_ex.fits'
+        output_file_cr = output_prefix + filt + '_cr.fits'
+
+        # start out the stacking with the first target ID
+        subprocess.run('cp '+ output_prefix + str(target_ids[0]) + '_' + filt + '_sk.fits ' + output_file_sk, shell=True)
+        subprocess.run('cp '+ output_prefix + str(target_ids[0]) + '_' + filt + '_ex.fits ' + output_file_ex, shell=True)
+        
+        # keep track of which target IDs still need to be appended to the image
+        remaining_ids = copy.copy(target_ids[1:])
+
+
+        # keep going while there are still IDs to append
+        while len(remaining_ids) > 0:
+
+            # file names for the target IDs
+            remaining_id_files_sk = [output_prefix + str(t) + '_' + filt + '_sk.fits' for t in remaining_ids]
+            remaining_id_files_ex = [output_prefix + str(t) + '_' + filt + '_ex.fits' for t in remaining_ids]
             
+            # find the target ID that has the best overlap with current mosaic
+            # (returns index and the overlapping pixels)
+            best_ind, overlap_x, overlap_y = most_overlap(output_file_ex, remaining_id_files_ex)
+
+            # make an HDU with the counts (sk) image for the mosaic and best ID
+            with fits.open(output_file_sk) as hdu_mosaic_sk, fits.open(remaining_id_files_sk[best_ind]) as hdu_best_sk:
+                temp_hdu_sk = fits.HDUList()
+                temp_hdu_sk.append(fits.ImageHDU(data=hdu_mosaic_sk[1].data, header=hdu_mosaic_sk[1].header))
+                temp_hdu_sk.append(fits.ImageHDU(data=hdu_best_sk[1].data, header=hdu_best_sk[1].header))
+            # make an HDU with the exposure image for the mosaic and best ID
+            with fits.open(output_file_ex) as hdu_mosaic_ex, fits.open(remaining_id_files_ex[best_ind]) as hdu_best_ex:
+                temp_hdu_ex = fits.HDUList()
+                temp_hdu_ex.append(fits.ImageHDU(data=hdu_mosaic_ex[1].data, header=hdu_mosaic_ex[1].header))
+                temp_hdu_ex.append(fits.ImageHDU(data=hdu_best_ex[1].data, header=hdu_best_ex[1].header))
+                 
+            # find the biweight of the overlapping areas
+            biweight_counts = calc_overlap_val(temp_hdu_sk, overlap_x, overlap_y)
+
+            # apply to the counts images
+            hdu_sk_corr = correct_sk(temp_hdu_sk, biweight_counts, temp_hdu_ex)
+
+            # write out to files
+            file_prefix = output_prefix + str(targ) + '_' + filt
+            hdu_sk_corr.writeto('temp_stack_sk.fits', overwrite=True)
+            temp_hdu_ex.writeto('temp_stack_ex.fits', overwrite=True)
+            
+            # stack with uvotimsum
+            cmd = 'uvotimsum temp_stack_sk.fits ' + output_file_sk + ' exclude=none clobber=yes'
+            subprocess.run(cmd, shell=True)
+            cmd = 'uvotimsum temp_stack_ex.fits ' + output_file_ex + ' method=EXPMAP exclude=none clobber=yes'
+            subprocess.run(cmd, shell=True)
+
+            # delete temp files
+            subprocess.run('rm temp_stack_*.fits', shell=True)
                 
+            # finally, remove this index from the remaining IDs list
+            remaining_ids = np.delete(remaining_ids, best_ind)
+
+            
+        # make a count rate image too
+        with fits.open(output_file_sk) as h_sk, fits.open(output_file_ex) as h_ex:
+            cr_hdu = fits.PrimaryHDU(data=h_sk[1].data/h_ex[1].data, header=h_sk[1].header)
+            cr_hdu.writeto(output_file_cr, overwrite=True)
+      
+
+def most_overlap(mosaic_ex, id_list):
+    """
+    Find the index of the target ID that has the best overlap with current mosaic
+
+    Parameters
+    ----------
+    mosaic_ex : string
+        name of the fits file with the exposure map for the current mosaic
+
+    id_list : string
+        exposure map filenames for the target IDs that need to be checked against the mosaic
+
+
+    Returns
+    -------
+    best_ind : integer
+        index of the target ID with the most overlap
+
+    overlap_x, overlap_y : lists of float arrays
+        for the best overlap, this is the output from find_overlap
+
+    """
+
+    # initialize arrays
+    best_ind = -99
+    overlap_x = [[],[]]
+    overlap_y = [[],[]]
+    
+
+    # read in the mosaic exposure map
+    with fits.open(mosaic_ex) as hdu_mosaic:
+
+        # go through the target IDs
+        for t in range(len(id_list)):
+
+            # open the current exposure map
+            with fits.open(id_list[t]) as hdu_id:
+
+                # copy over the two extensions
+                temp_hdu_ex = fits.HDUList()
+                temp_hdu_ex.append(fits.ImageHDU(data=hdu_mosaic[1].data, header=hdu_mosaic[1].header))
+                temp_hdu_ex.append(fits.ImageHDU(data=hdu_id[1].data, header=hdu_id[1].header))
+
+                # turn it into 0s/1s
+                temp_hdu_ex = exp_to_ones(temp_hdu_ex)
+
+                # apply mask
+                temp_hdu_ex = mask_image(temp_hdu_ex, 'bg_mask.reg')
+
+                # write it out
+                temp_hdu_ex.writeto('temp_overlap_ex.fits', overwrite=True)
+                
+                # find the overlap
+                current_overlap_x, current_overlap_y = find_overlap('temp_overlap_ex.fits')
+
+                # if this is more overlap than the biggest so far, save it
+                if len(current_overlap_x[0]) > len(overlap_x[0]):
+                    overlap_x = copy.deepcopy(current_overlap_x)
+                    overlap_y = copy.deepcopy(current_overlap_y)
+                    best_ind = t
+    
+    # delete temp files
+    subprocess.run('rm temp_overlap_ex.fits', shell=True)
+
+    
+    return best_ind, overlap_x, overlap_y
+
+
+
 def mask_image(hdu, reg_file):
     """
     Mask images using a ds9 region file
@@ -198,7 +335,7 @@ def mask_image(hdu, reg_file):
     
 def find_overlap(image_footprint):
     """
-    Using a multi-extension fits file, which is 0 in places where there is no exposure, find a common overlapping area.  This particular code is optimized for images that are assumed to have a common overlapping area.
+    Using a multi-extension fits file, in which each extension is 0 in places where there is no exposure and 1 where there is exposure, find a common overlapping area between ALL of the extensions.  If there is no area with 100% overlap, this will return empty lists.
 
     Parameters
     ----------
@@ -208,7 +345,7 @@ def find_overlap(image_footprint):
     Returns
     -------
     overlap_x, overlap_y : lists of float arrays
-        The X/Y coordinates of the pixels where there is full overlap.  Each element of the list contains the array of values for each extension.
+        The X/Y coordinates of the pixels where there is full overlap.  Each element of the list contains the array of values for each extension.  If there is no overlap, both have length of 0.
    
     """
 
@@ -224,7 +361,11 @@ def find_overlap(image_footprint):
     with fits.open('targ_temp_ex_stack.fits') as hdu_stack, fits.open(image_footprint) as hdu_ex:
 
         # x/y coordinates of max overlap in stacked image
-        y_stack, x_stack = np.where(hdu_stack[1].data > 0.999*len(hdu_ex))
+        y_stack, x_stack = np.where(hdu_stack[1].data > 0.9999*len(hdu_ex))
+
+        # if there's no overlap, return empty lists
+        if len(x_stack) == 0:
+            return [], []
 
         # convert to ra/dec
         wcs_stack = wcs.WCS(hdu_stack[1].header)
