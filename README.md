@@ -45,11 +45,11 @@ From `~/example`, run
 > uvot_deep.uvot_deep(['00037723001','00037723002'], 'test_', ['w2','m2','w1'])
 ```
 After a lot of verbosity from the UVOT tools, this will create several files in `~/example` for each filter (replace `ff` with the filter name).
-- `test_ff_sk.fits`: each extension is a counts ("sky") image, in units of counts per pixel
-- `test_ff_sk_all.fits`: all extensions from `test_ff_sk.fits` added together
-- `test_ff_ex.fits`: each extension is an exposure map, in units of seconds
-- `test_ff_ex_all.fits`: all extensions from `test_ff_ex.fits` added together
-- `test_ff_cr.fits`: count rate image (`test_ff_sk_all.fits` divided by `test_ff_ex_all.fits`), in counts per second per pixel
+- `test_ff_sk_all.fits`: each extension is a counts ("sky") image, in units of counts per pixel
+- `test_ff_sk.fits`: all extensions from `test_ff_sk.fits` added together
+- `test_ff_ex_all.fits`: each extension is an exposure map, in units of seconds
+- `test_ff_ex.fits`: all extensions from `test_ff_ex.fits` added together
+- `test_ff_cr.fits`: count rate image (`test_ff_sk.fits` divided by `test_ff_ex.fits`), in counts per second per pixel
 
 It will also create files in `~/example/[obsid]/uvot/image` for each exposure, which you most likely won't need to look at.  But if you're curious, this is the list, where `[obsid]` is the Observation ID and `[ff]` is the filter.
 - `sw[obsid]u[ff].badpix`: bad pixel map
