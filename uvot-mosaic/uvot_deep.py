@@ -13,20 +13,25 @@ import pdb
 
 def uvot_deep(input_folders,
                   output_prefix,
-                  filter_list=['w2','m2','w1','uu','bb','vv']):
+                  filter_list=['w2','m2','w1','uu','bb','vv'],
+                  scattered_light=False):
     """
     For a set of UVOT images downloaded from HEASARC, do processing on each snapshot:
     * create a counts image
     * create exposure map
     * create LSS image
     * create mask image for bad pixels
-    * create scattered light image
+    * create scattered light image (USE WITH CAUTION)
 
     Cases where an image will be skipped:
     * If imaging for a filter doesn't exist, it will be skipped, even if that filter name is in the input.
     * UVOT images are generally 2x2 binned.  If any images are unbinned, they will be skipped.
     * If a particular snapshot has no aspect correction, the astrometry is unreliable, so it will be skipped.
     
+    The resulting counts images and exposure maps will be ready to use - corrected for
+    LSS and bad pixels masked.  SSS has not yet been implemented, so keep that in mind,
+    but it is unlikely to be an issue.
+
 
     Modeled off of Michael Siegel's code uvot_deep.pro
 
@@ -41,6 +46,11 @@ def uvot_deep(input_folders,
 
     filter_list : list of strings
         some or all of ['w2','m2','w1','uu','bb','vv'] (default is all of them)
+
+    scattered_light : boolean (default=False)
+        choose whether to generate scattered light images - this is turned off until LMZH
+        figures out which fits files should be used and writes understandable documentation
+
 
     Returns
     -------
@@ -133,7 +143,8 @@ def uvot_deep(input_folders,
 
 
             # scattered light images
-            scattered_light(obs, filt, teldef[filt])
+            if scattered_light:
+                scattered_light(obs, filt, teldef[filt])
 
             # mask and bad pixel images (which also fixes the exposure map)
             mask_image(obs, filt, teldef[filt])
@@ -164,31 +175,18 @@ def uvot_deep(input_folders,
 
                     
             # --- 3. make one file with ALL OF THE EXTENSIONS
+
+            hdu_sk_all = append_ext(hdu_sk_all, image_info['sk_image_corr'][-1], image_info)
+            hdu_ex_all = append_ext(hdu_ex_all, image_info['exp_image_mask'][-1], image_info)
+            if scattered_light:
+                hdu_sl_all = append_ext(hdu_sl_all, image_info['sl_image'][-1], image_info)
             
-            with fits.open(image_info['sk_image_corr'][-1]) as hdu_sk_corr, \
-                 fits.open(image_info['exp_image_mask'][-1]) as hdu_ex_mask, \
-                 fits.open(image_info['sl_image'][-1]) as hdu_sl:
-
-                # if this is the first image, copy over the primary headers
-                #if len(hdu_sk_all) == 0:
-                #    hdu_sk_all.append(fits.PrimaryHDU(header=hdu_sk_corr[0].header))
-                #    hdu_ex_all.append(fits.PrimaryHDU(header=hdu_ex_mask[0].header))
-                #    hdu_sl_all.append(fits.PrimaryHDU(header=hdu_sl[0].header))
-
-                # if the binning is 2x2 and the aspect corrections are ok, append the arrays
-                for i in range(1,len(hdu_sk_corr)):
-                    dict_ind = 1+i-len(hdu_sk_corr)
-                    if (image_info['binning'][dict_ind] == 2) & \
-                       ((image_info['aspect_corr'][dict_ind] == 'DIRECT') | (image_info['aspect_corr'][dict_ind] == 'UNICORR')):
-                        hdu_sk_all.append(fits.ImageHDU(data=hdu_sk_corr[i].data, header=hdu_sk_corr[i].header))
-                        hdu_ex_all.append(fits.ImageHDU(data=hdu_ex_mask[i].data, header=hdu_ex_mask[i].header))
-                        hdu_sl_all.append(fits.ImageHDU(data=hdu_sl[i].data, header=hdu_sl[i].header))
-
 
         # write out all of the combined extensions
         hdu_sk_all.writeto(output_prefix + filt + '_sk_all.fits', overwrite=True)
         hdu_ex_all.writeto(output_prefix + filt + '_ex_all.fits', overwrite=True)
-        hdu_sl_all.writeto(output_prefix + filt + '_sl_all.fits', overwrite=True)
+        if scattered_light:
+            hdu_sl_all.writeto(output_prefix + filt + '_sl_all.fits', overwrite=True)
             
                     
         # --- 4. stack all of the extensions together into one image
@@ -215,7 +213,47 @@ def uvot_deep(input_folders,
             
 
 
+def append_ext(hdu_all, new_fits_file, image_info):
+    """
+    append extenstions from new_fits_file to hdu_all (checking that the new
+    extensions have an aspect correction and are 2x2 binned)
 
+    Parameters
+    ----------
+    hdu_all : HDU object
+        the HDU that we're appending to
+
+    new_fits_file : string
+        name of the fits file that has extensions to append
+    
+    image_info : dict
+        dictionary that has the extacted info about binning and aspect correction
+
+
+    Returns
+    -------
+    hdu_all : HDU object
+        the same as the input HDU, with the new extensions appended
+
+    """
+    
+    with fits.open(new_fits_file) as hdu_new:
+
+        # if this is the first image, copy over the primary header
+        if len(hdu_all) == 0:
+            hdu_all.append(fits.PrimaryHDU(header=hdu_new[0].header))
+
+        # if the binning is 2x2 and the aspect corrections are ok, append the array
+        for i in range(1,len(hdu_new)):
+            dict_ind = 1+i-len(hdu_new)
+            if (image_info['binning'][dict_ind] == 2) & \
+               ((image_info['aspect_corr'][dict_ind] == 'DIRECT') | (image_info['aspect_corr'][dict_ind] == 'UNICORR')):
+                hdu_all.append(fits.ImageHDU(data=hdu_new[i].data, header=hdu_new[i].header))
+
+
+    return hdu_all
+
+                        
 def scattered_light(obs_folder, obs_filter, teldef_file):
 
     """
@@ -478,6 +516,7 @@ def corr_sk(obs_folder, obs_filter):
 
     
 
-if __name__ == '__main__':
-
-    uvot_deep(['00037723001','00037723002'], 'test_', ['w2','m2','w1'])
+#if __name__ == '__main__':
+#
+#    # testing
+#    uvot_deep(['00037723001','00037723002'], 'test_', ['w2','m2','w1'])

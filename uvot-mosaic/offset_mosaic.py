@@ -20,7 +20,8 @@ def offset_mosaic(input_prefix,
                       output_prefix,
                       filter_list=['w2','m2','w1','uu','bb','vv'],
                       min_exp_w2=170, min_exp_m2=230, min_exp_w1=200,
-                      min_exp_uu=0, min_exp_bb=0, min_exp_vv=0):
+                      min_exp_uu=0, min_exp_bb=0, min_exp_vv=0,
+                      mask_file=None):
     """
     Create mosaics in which the background varies between snapshots, so they need to be adjusted to match.
 
@@ -39,6 +40,9 @@ def offset_mosaic(input_prefix,
 
     min_exp_w2, min_exp_m2, min_exp_w1, min_exp_uu, min_exp_bb, min_exp_vv : integers
         Minimum exposure times (in seconds) for each filter.  Any snapshots with exposure times shorter than this will be discarded.
+
+    mask_file : string
+        Name of ds9 region file with circles.  These areas will be masked when calculating the biweight of overlapping areas.
 
     Returns
     -------
@@ -97,7 +101,8 @@ def offset_mosaic(input_prefix,
                 temp_hdu_ex_adj = exp_to_ones(temp_hdu_ex_adj)
 
                 # mask areas with foreground stars, etc.
-                temp_hdu_ex_adj = mask_image(temp_hdu_ex_adj, 'bg_mask.reg')
+                if mask_file is not None:
+                    temp_hdu_ex_adj = mask_image(temp_hdu_ex_adj, mask_file)
 
                 # write out to files
                 temp_hdu_sk.writeto('targ_temp_sk.fits', overwrite=True)
