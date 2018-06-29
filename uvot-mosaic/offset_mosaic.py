@@ -66,6 +66,10 @@ def offset_mosaic(input_prefix,
         # open the images
         with fits.open(input_prefix + filt + '_sk_all.fits') as hdu_sk, fits.open(input_prefix + filt + '_ex_all.fits') as hdu_ex:
 
+            # delete the 0th extensions (no images there, and they break later steps)
+            del hdu_sk[0]
+            del hdu_ex[0]
+            
             # remove extensions with exposures shorter than minimum
             exp_time = np.array( [hdu_sk[i].header['EXPOSURE'] for i in range(len(hdu_sk))] )
             remove_ind = np.where(exp_time < min_exp[filt])[0]
