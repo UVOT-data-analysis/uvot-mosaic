@@ -276,7 +276,7 @@ def most_overlap(mosaic_ex, id_list, mask_file=None):
                 if len(current_overlap_x[0]) > len(overlap_x[0]):
                     overlap_x = copy.deepcopy(current_overlap_x)
                     overlap_y = copy.deepcopy(current_overlap_y)
-                    best_ind = t
+                    best_ind = copy.copy(t)
     
     # delete temp files
     subprocess.run('rm temp_overlap_ex.fits', shell=True)
