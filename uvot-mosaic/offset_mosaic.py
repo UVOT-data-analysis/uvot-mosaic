@@ -213,7 +213,7 @@ def offset_mosaic(input_prefix,
             cr_hdu.writeto(output_file_cr, overwrite=True)
       
 
-def most_overlap(mosaic_ex, id_list):
+def most_overlap(mosaic_ex, id_list, mask_file=None):
     """
     Find the index of the target ID that has the best overlap with current mosaic
 
@@ -224,6 +224,9 @@ def most_overlap(mosaic_ex, id_list):
 
     id_list : string
         exposure map filenames for the target IDs that need to be checked against the mosaic
+
+    mask_file : string
+        Name of ds9 region file with circles.  These areas will be masked when calculating the biweight of overlapping areas.
 
 
     Returns
@@ -260,7 +263,8 @@ def most_overlap(mosaic_ex, id_list):
                 temp_hdu_ex = exp_to_ones(temp_hdu_ex)
 
                 # apply mask
-                temp_hdu_ex = mask_image(temp_hdu_ex, 'bg_mask.reg')
+                if mask_file is not None:
+                    temp_hdu_ex = mask_image(temp_hdu_ex, mask_file)
 
                 # write it out
                 temp_hdu_ex.writeto('temp_overlap_ex.fits', overwrite=True)
