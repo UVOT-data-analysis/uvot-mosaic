@@ -25,7 +25,7 @@ def offset_mosaic(input_prefix,
     """
     Create mosaics in which the background varies between snapshots, so they need to be adjusted to match.
 
-    The default minimum exposure times for the UV filters were estimated by LMZH to be reasonable values, but no experimenting has been done with the optical filters, so their default is currently 0.
+    The default minimum exposure times for the UV filters were estimated by LMZH to be reasonable values for M31, but no experimenting has been done with the optical filters, so their default is currently 0.
 
     Parameters
     ----------
@@ -272,7 +272,11 @@ def most_overlap(mosaic_ex, id_list, mask_file=None):
                 # find the overlap
                 current_overlap_x, current_overlap_y = find_overlap('temp_overlap_ex.fits')
 
-                # if this is more overlap than the biggest so far, save it
+                # if there's no overlap, go to the next image
+                if len(current_overlap_x) == 0:
+                    continue
+
+                # if there is overlap, and it's more than the biggest so far, save it
                 if len(current_overlap_x[0]) > len(overlap_x[0]):
                     overlap_x = copy.deepcopy(current_overlap_x)
                     overlap_y = copy.deepcopy(current_overlap_y)
