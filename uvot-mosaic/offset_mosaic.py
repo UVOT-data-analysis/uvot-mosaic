@@ -126,10 +126,10 @@ def offset_mosaic(input_prefix,
                 overlap_x, overlap_y = find_overlap('targ_temp_ex.fits')
 
                 # find the biweight of the overlapping areas
-                biweight_counts = calc_overlap_val(temp_hdu_sk, overlap_x, overlap_y)
+                biweight_cps = calc_overlap_val(temp_hdu_sk, temp_hdu_ex, overlap_x, overlap_y)
 
                 # apply to the counts images
-                hdu_sk_corr = correct_sk(temp_hdu_sk, biweight_counts, temp_hdu_ex)
+                hdu_sk_corr = correct_sk(temp_hdu_sk, biweight_cps, temp_hdu_ex)
 
                 # write out to files
                 hdu_sk_corr.writeto(file_prefix + '_sk_all.fits', overwrite=True)
@@ -197,16 +197,17 @@ def offset_mosaic(input_prefix,
                 temp_hdu_ex.append(fits.ImageHDU(data=hdu_best_ex[1].data, header=hdu_best_ex[1].header))
                  
             # find the biweight of the overlapping areas
-            biweight_counts = calc_overlap_val(temp_hdu_sk, overlap_x, overlap_y)
+            biweight_cps = calc_overlap_val(temp_hdu_sk, temp_hdu_ex, overlap_x, overlap_y)
 
             # apply to the counts images
-            hdu_sk_corr, delta_counts = correct_sk(temp_hdu_sk, biweight_counts, temp_hdu_ex)
+            hdu_sk_corr, delta_cps = correct_sk(temp_hdu_sk, temp_hdu_ex, biweight_cps)
 
             # save those changes to the individual target ID segments
             with fits.open(output_file_sk_all) as hdu_sk_all, fits.open(output_file_ex_all) as hdu_ex_all:
                 # adjust segments
                 for h in range(1,len(hdu_sk_all)):
-                    hdu_sk_all[h].data += delta_counts[0]
+                    hdu_sk_all[h].data = (hdu_sk_all[h].data/hdu_ex_all[h].data + delta_cps[0]) * hdu_ex_all[h].data
+                    hdu_sk_all[h].data[hdu_ex_all[h].data == 0] = 0
                 hdu_sk_all.append(fits.ImageHDU(data=hdu_sk_corr[1].data, header=hdu_sk_corr[1].header))
                 hdu_ex_all.append(fits.ImageHDU(data=temp_hdu_ex[1].data, header=temp_hdu_ex[1].header))
                 # write out to files
@@ -225,7 +226,6 @@ def offset_mosaic(input_prefix,
                 cr_hdu = fits.PrimaryHDU(data=h_sk[1].data/h_ex[1].data, header=h_sk[1].header)
                 cr_hdu.writeto(output_file_cr, overwrite=True)
 
-            #pdb.set_trace()
                
             # finally, remove this index from the remaining IDs list
             remaining_ids = np.delete(remaining_ids, best_ind)
@@ -426,14 +426,17 @@ def find_overlap(image_footprint):
 
 
 
-def calc_overlap_val(hdu, overlap_x, overlap_y, method='biweight'):
+def calc_overlap_val(hdu_sk, hdu_ex, overlap_x, overlap_y, method='biweight'):
     """
     Find a representative value (for now, assuming biweight) for the overlapping area 
 
     Parameters
     ----------
-    hdu : astropy hdu object
+    hdu_sk : astropy hdu object
         An HDU with the sky (counts) images
+
+    hdu_ex : astropy hdu object
+        An HDU with the exposure images
 
     overlap_x, overlap_y : lists of float arrays
         The X/Y coordinates of the pixels where there is full overlap.  Each element of the list contains the array of values for each extension.
@@ -455,13 +458,15 @@ def calc_overlap_val(hdu, overlap_x, overlap_y, method='biweight'):
 
     val = []
     
-    for h in range(len(hdu)):
+    for h in range(len(hdu_sk)):
 
+        count_rate = hdu_sk[h].data / hdu_ex[h].data
+        
         grab_pix = []
 
         # get the pixel values
         for i in range(len(overlap_x[h])):
-            grab_pix.append(hdu[h].data[ int(overlap_y[h][i]), int(overlap_x[h][i]) ])
+            grab_pix.append(count_rate[ int(overlap_y[h][i]), int(overlap_x[h][i]) ])
 
         # do a sigma clip
         pix_clip = sigma_clip(np.array(grab_pix), sigma=2.5, iters=3)
@@ -478,7 +483,7 @@ def calc_overlap_val(hdu, overlap_x, overlap_y, method='biweight'):
 
     
 
-def correct_sk(hdu_sk, overlap_counts, hdu_ex):
+def correct_sk(hdu_sk, hdu_ex, overlap_cps):
     """
     We want all overlapping areas to have the same counts/sec, so adjust the counts image (using the known exposure time) accordingly
 
@@ -487,19 +492,19 @@ def correct_sk(hdu_sk, overlap_counts, hdu_ex):
     hdu_sk : astropy hdu object
         An HDU with the sky (counts) images
 
-    overlap_counts : array of floats
-        The average (or other calculation) counts/pixel in the overlapping region
-
     hdu_ex : astropy hdu object
         An HDU with the exposure images
+
+    overlap_cps : array of floats
+        The biweight (or other calculation) counts/sec/pixel in the overlapping region
 
     Returns
     -------
     hdu_corr : astropy hdu object
-        the same hdu as the input, but with an offset applied
+        the same hdu as the input sky image, but with an offset applied
 
-    delta_counts : array of floats
-        the amount that each counts image was shifted
+    delta_cps : array of floats
+        the amount (in counts/sec/pixel) that each image was shifted
 
     """
 
@@ -508,30 +513,23 @@ def correct_sk(hdu_sk, overlap_counts, hdu_ex):
     print('')
 
 
-    # get exposure times
-    exp_time = np.array( [h.header['EXPOSURE'] for h in hdu_sk] )
-
-    # convert to counts/sec
-    overlap_cps = overlap_counts / exp_time
-
     # we want everything to match the minimum counts/sec
     min_cps = np.min(overlap_cps)
 
     # array to keep track of how much each counts image is adjusted
-    delta_counts = np.zeros(len(hdu_sk))
+    delta_cps = np.zeros(len(hdu_sk))
     
     
     for h in range(len(hdu_sk)):
         # do the offset
-        #hdu_sk[h].data = (hdu_sk[h].data/exp_time[h] - (overlap_cps[h] - min_cps)) * exp_time[h]
-        delta_counts[h] = - (overlap_cps[h] - min_cps) * exp_time[h]
-        hdu_sk[h].data = hdu_sk[h].data + delta_counts[h]
+        delta_cps[h] = - (overlap_cps[h] - min_cps)
+        hdu_sk[h].data = (hdu_sk[h].data/hdu_ex[h].data + delta_cps[h]) * hdu_ex[h].data
         # use exposure map to set border to 0
         hdu_sk[h].data[hdu_ex[h].data == 0] = 0
         
         
 
-    return hdu_sk, delta_counts
+    return hdu_sk, delta_cps
 
 
         
