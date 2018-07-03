@@ -89,7 +89,7 @@ def offset_mosaic(input_prefix,
             for targ in target_ids:
 
                 print('')
-                print('##### stacking target ID ' + str(targ) + ' #####')
+                print('##### stacking target ID ' + str(targ) + ', filter ' + filt + ' #####')
                 print('')
 
                 # prefix for saving the files for this target ID
@@ -129,7 +129,7 @@ def offset_mosaic(input_prefix,
                 biweight_cps = calc_overlap_val(temp_hdu_sk, temp_hdu_ex, overlap_x, overlap_y)
 
                 # apply to the counts images
-                hdu_sk_corr = correct_sk(temp_hdu_sk, biweight_cps, temp_hdu_ex)
+                hdu_sk_corr, _ = correct_sk(temp_hdu_sk, temp_hdu_ex, biweight_cps)
 
                 # write out to files
                 hdu_sk_corr.writeto(file_prefix + '_sk_all.fits', overwrite=True)
