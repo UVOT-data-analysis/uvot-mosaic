@@ -245,7 +245,7 @@ def append_ext(hdu_all, new_fits_file, image_info):
 
         # if the binning is 2x2 and the aspect corrections are ok, append the array
         for i in range(1,len(hdu_new)):
-            dict_ind = 1+i-len(hdu_new)
+            dict_ind = i-len(hdu_new)
             if (image_info['binning'][dict_ind] == 2) & \
                ((image_info['aspect_corr'][dict_ind] == 'DIRECT') | (image_info['aspect_corr'][dict_ind] == 'UNICORR')):
                 hdu_all.append(fits.ImageHDU(data=hdu_new[i].data, header=hdu_new[i].header))
