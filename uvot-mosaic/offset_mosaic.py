@@ -7,6 +7,7 @@ from regions import read_ds9
 
 import glob
 import os
+import os.path
 import subprocess
 import copy
 
@@ -91,6 +92,15 @@ def offset_mosaic(input_prefix,
                 print('##### stacking target ID ' + str(targ) + ' #####')
                 print('')
 
+                # prefix for saving the files for this target ID
+                file_prefix = output_prefix + str(targ) + '_' + filt
+
+                # check if this one is done already (by looking for a count rate image)
+                if os.path.isfile(file_prefix + '_cr.fits'):
+                    print(str(targ)+' is already done')
+                    print('')
+                    continue
+                
                 
                 # temp file to hold snapshots with current target ID
                 temp_hdu_sk = fits.HDUList()
@@ -122,7 +132,6 @@ def offset_mosaic(input_prefix,
                 hdu_sk_corr = correct_sk(temp_hdu_sk, biweight_counts, temp_hdu_ex)
 
                 # write out to files
-                file_prefix = output_prefix + str(targ) + '_' + filt
                 hdu_sk_corr.writeto(file_prefix + '_sk_all.fits', overwrite=True)
                 temp_hdu_ex.writeto(file_prefix + '_ex_all.fits', overwrite=True)
                 
@@ -150,12 +159,16 @@ def offset_mosaic(input_prefix,
 
         # output file names
         output_file_sk = output_prefix + filt + '_sk.fits'
+        output_file_sk_all = output_prefix + filt + '_sk_all.fits'
         output_file_ex = output_prefix + filt + '_ex.fits'
+        output_file_ex_all = output_prefix + filt + '_ex_all.fits'
         output_file_cr = output_prefix + filt + '_cr.fits'
 
         # start out the stacking with the first target ID
         subprocess.run('cp '+ output_prefix + str(target_ids[0]) + '_' + filt + '_sk.fits ' + output_file_sk, shell=True)
         subprocess.run('cp '+ output_prefix + str(target_ids[0]) + '_' + filt + '_ex.fits ' + output_file_ex, shell=True)
+        subprocess.run('cp '+ output_prefix + str(target_ids[0]) + '_' + filt + '_sk.fits ' + output_file_sk_all, shell=True)
+        subprocess.run('cp '+ output_prefix + str(target_ids[0]) + '_' + filt + '_ex.fits ' + output_file_ex_all, shell=True)
         
         # keep track of which target IDs still need to be appended to the image
         remaining_ids = copy.copy(target_ids[1:])
@@ -187,30 +200,37 @@ def offset_mosaic(input_prefix,
             biweight_counts = calc_overlap_val(temp_hdu_sk, overlap_x, overlap_y)
 
             # apply to the counts images
-            hdu_sk_corr = correct_sk(temp_hdu_sk, biweight_counts, temp_hdu_ex)
+            hdu_sk_corr, delta_counts = correct_sk(temp_hdu_sk, biweight_counts, temp_hdu_ex)
 
-            # write out to files
-            file_prefix = output_prefix + str(targ) + '_' + filt
-            hdu_sk_corr.writeto('temp_stack_sk.fits', overwrite=True)
-            temp_hdu_ex.writeto('temp_stack_ex.fits', overwrite=True)
-            
-            # stack with uvotimsum
-            cmd = 'uvotimsum temp_stack_sk.fits ' + output_file_sk + ' exclude=none clobber=yes'
-            subprocess.run(cmd, shell=True)
-            cmd = 'uvotimsum temp_stack_ex.fits ' + output_file_ex + ' method=EXPMAP exclude=none clobber=yes'
-            subprocess.run(cmd, shell=True)
-
-            # delete temp files
-            subprocess.run('rm temp_stack_*.fits', shell=True)
+            # save those changes to the individual target ID segments
+            with fits.open(output_file_sk_all) as hdu_sk_all, fits.open(output_file_ex_all) as hdu_ex_all:
+                # adjust segments
+                for h in range(1,len(hdu_sk_all)):
+                    hdu_sk_all[h].data += delta_counts[0]
+                hdu_sk_all.append(fits.ImageHDU(data=hdu_sk_corr[1].data, header=hdu_sk_corr[1].header))
+                hdu_ex_all.append(fits.ImageHDU(data=temp_hdu_ex[1].data, header=temp_hdu_ex[1].header))
+                # write out to files
+                hdu_sk_all.writeto(output_file_sk_all, overwrite=True)
+                hdu_ex_all.writeto(output_file_ex_all, overwrite=True)
                 
+                           
+            # stack with uvotimsum
+            cmd = 'uvotimsum ' + output_file_sk_all + ' ' + output_file_sk + ' exclude=none clobber=yes'
+            subprocess.run(cmd, shell=True)
+            cmd = 'uvotimsum ' + output_file_ex_all + ' ' + output_file_ex + ' method=EXPMAP exclude=none clobber=yes'
+            subprocess.run(cmd, shell=True)
+
+            # make a count rate image too
+            with fits.open(output_file_sk) as h_sk, fits.open(output_file_ex) as h_ex:
+                cr_hdu = fits.PrimaryHDU(data=h_sk[1].data/h_ex[1].data, header=h_sk[1].header)
+                cr_hdu.writeto(output_file_cr, overwrite=True)
+
+            #pdb.set_trace()
+               
             # finally, remove this index from the remaining IDs list
             remaining_ids = np.delete(remaining_ids, best_ind)
 
             
-        # make a count rate image too
-        with fits.open(output_file_sk) as h_sk, fits.open(output_file_ex) as h_ex:
-            cr_hdu = fits.PrimaryHDU(data=h_sk[1].data/h_ex[1].data, header=h_sk[1].header)
-            cr_hdu.writeto(output_file_cr, overwrite=True)
       
 
 def most_overlap(mosaic_ex, id_list, mask_file=None):
@@ -478,6 +498,9 @@ def correct_sk(hdu_sk, overlap_counts, hdu_ex):
     hdu_corr : astropy hdu object
         the same hdu as the input, but with an offset applied
 
+    delta_counts : array of floats
+        the amount that each counts image was shifted
+
     """
 
     print('')
@@ -493,17 +516,22 @@ def correct_sk(hdu_sk, overlap_counts, hdu_ex):
 
     # we want everything to match the minimum counts/sec
     min_cps = np.min(overlap_cps)
+
+    # array to keep track of how much each counts image is adjusted
+    delta_counts = np.zeros(len(hdu_sk))
     
     
     for h in range(len(hdu_sk)):
         # do the offset
-        hdu_sk[h].data = (hdu_sk[h].data/exp_time[h] - (overlap_cps[h] - min_cps)) * exp_time[h]
+        #hdu_sk[h].data = (hdu_sk[h].data/exp_time[h] - (overlap_cps[h] - min_cps)) * exp_time[h]
+        delta_counts[h] = - (overlap_cps[h] - min_cps) * exp_time[h]
+        hdu_sk[h].data = hdu_sk[h].data + delta_counts[h]
         # use exposure map to set border to 0
         hdu_sk[h].data[hdu_ex[h].data == 0] = 0
         
         
 
-    return hdu_sk
+    return hdu_sk, delta_counts
 
 
         
