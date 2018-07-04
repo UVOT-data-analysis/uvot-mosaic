@@ -22,7 +22,7 @@ def offset_mosaic(input_prefix,
                       filter_list=['w2','m2','w1','uu','bb','vv'],
                       min_exp_w2=170, min_exp_m2=230, min_exp_w1=200,
                       min_exp_uu=0, min_exp_bb=0, min_exp_vv=0,
-                      mask_file=None):
+                      restack_id=False, mask_file=None):
     """
     Create mosaics in which the background varies between snapshots, so they need to be adjusted to match.
 
@@ -41,6 +41,9 @@ def offset_mosaic(input_prefix,
 
     min_exp_w2, min_exp_m2, min_exp_w1, min_exp_uu, min_exp_bb, min_exp_vv : integers
         Minimum exposure times (in seconds) for each filter.  Any snapshots with exposure times shorter than this will be discarded.
+
+    restack_id : boolean (default = False)
+        By default, if the stacking for a given target ID is done, it won't do the stacking again.  Set this to True to force the stacking to be done anyway.
 
     mask_file : string
         Name of ds9 region file with circles.  These areas will be masked when calculating the biweight of overlapping areas.
@@ -96,7 +99,7 @@ def offset_mosaic(input_prefix,
                 file_prefix = output_prefix + str(targ) + '_' + filt
 
                 # check if this one is done already (by looking for a count rate image)
-                if os.path.isfile(file_prefix + '_cr.fits'):
+                if os.path.isfile(file_prefix + '_cr.fits') and (restack_id == False):
                     print(str(targ)+' is already done')
                     print('')
                     continue
