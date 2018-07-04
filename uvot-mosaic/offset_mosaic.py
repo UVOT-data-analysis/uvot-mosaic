@@ -169,7 +169,12 @@ def offset_mosaic(input_prefix,
         subprocess.run('cp '+ output_prefix + str(target_ids[0]) + '_' + filt + '_ex.fits ' + output_file_ex, shell=True)
         subprocess.run('cp '+ output_prefix + str(target_ids[0]) + '_' + filt + '_sk.fits ' + output_file_sk_all, shell=True)
         subprocess.run('cp '+ output_prefix + str(target_ids[0]) + '_' + filt + '_ex.fits ' + output_file_ex_all, shell=True)
-        
+        # make a count rate image too
+        with fits.open(output_file_sk) as h_sk, fits.open(output_file_ex) as h_ex:
+            cr_hdu = fits.PrimaryHDU(data=h_sk[1].data/h_ex[1].data, header=h_sk[1].header)
+            cr_hdu.writeto(output_file_cr, overwrite=True)
+
+            
         # keep track of which target IDs still need to be appended to the image
         remaining_ids = copy.copy(target_ids[1:])
 
