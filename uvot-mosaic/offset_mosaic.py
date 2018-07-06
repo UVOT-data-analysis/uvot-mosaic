@@ -22,7 +22,7 @@ def offset_mosaic(input_prefix,
                       filter_list=['w2','m2','w1','uu','bb','vv'],
                       min_exp_w2=170, min_exp_m2=230, min_exp_w1=200,
                       min_exp_uu=0, min_exp_bb=0, min_exp_vv=0,
-                      mask_file=None):
+                      restack_id=False, mask_file=None):
     """
     Create mosaics in which the background varies between snapshots, so they need to be adjusted to match.
 
@@ -41,6 +41,9 @@ def offset_mosaic(input_prefix,
 
     min_exp_w2, min_exp_m2, min_exp_w1, min_exp_uu, min_exp_bb, min_exp_vv : integers
         Minimum exposure times (in seconds) for each filter.  Any snapshots with exposure times shorter than this will be discarded.
+
+    restack_id : boolean (default = False)
+        By default, if the stacking for a given target ID is done, it won't do the stacking again.  Set this to True to force the stacking to be done anyway.
 
     mask_file : string
         Name of ds9 region file with circles.  These areas will be masked when calculating the biweight of overlapping areas.
@@ -89,14 +92,14 @@ def offset_mosaic(input_prefix,
             for targ in target_ids:
 
                 print('')
-                print('##### stacking target ID ' + str(targ) + ' #####')
+                print('##### stacking target ID ' + str(targ) + ', filter ' + filt + ' #####')
                 print('')
 
                 # prefix for saving the files for this target ID
                 file_prefix = output_prefix + str(targ) + '_' + filt
 
                 # check if this one is done already (by looking for a count rate image)
-                if os.path.isfile(file_prefix + '_cr.fits'):
+                if os.path.isfile(file_prefix + '_cr.fits') and (restack_id == False):
                     print(str(targ)+' is already done')
                     print('')
                     continue
@@ -129,7 +132,7 @@ def offset_mosaic(input_prefix,
                 biweight_cps = calc_overlap_val(temp_hdu_sk, temp_hdu_ex, overlap_x, overlap_y)
 
                 # apply to the counts images
-                hdu_sk_corr = correct_sk(temp_hdu_sk, biweight_cps, temp_hdu_ex)
+                hdu_sk_corr, _ = correct_sk(temp_hdu_sk, temp_hdu_ex, biweight_cps)
 
                 # write out to files
                 hdu_sk_corr.writeto(file_prefix + '_sk_all.fits', overwrite=True)
@@ -169,7 +172,12 @@ def offset_mosaic(input_prefix,
         subprocess.run('cp '+ output_prefix + str(target_ids[0]) + '_' + filt + '_ex.fits ' + output_file_ex, shell=True)
         subprocess.run('cp '+ output_prefix + str(target_ids[0]) + '_' + filt + '_sk.fits ' + output_file_sk_all, shell=True)
         subprocess.run('cp '+ output_prefix + str(target_ids[0]) + '_' + filt + '_ex.fits ' + output_file_ex_all, shell=True)
-        
+        # make a count rate image too
+        with fits.open(output_file_sk) as h_sk, fits.open(output_file_ex) as h_ex:
+            cr_hdu = fits.PrimaryHDU(data=h_sk[1].data/h_ex[1].data, header=h_sk[1].header)
+            cr_hdu.writeto(output_file_cr, overwrite=True)
+
+            
         # keep track of which target IDs still need to be appended to the image
         remaining_ids = copy.copy(target_ids[1:])
 
