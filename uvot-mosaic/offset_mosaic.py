@@ -482,8 +482,17 @@ def calc_overlap_val(hdu_sk, hdu_ex, overlap_x, overlap_y, method='biweight'):
         # calculate biweight
         #biweight_noclip = biweight_location(np.array(grab_pix))
         biweight_clip = biweight_location(pix_clip.data[~pix_clip.mask])
+
+        # if a lot of the image is 0, and the biweight is therefore NaN,
+        # use the mean instead
+        if np.isnan(biweight_clip):
+            print('Biweight is NaN, using mean instead')
+            biweight_clip = np.mean(pix_clip.data[~pix_clip.mask])
+        
         
         val.append(biweight_clip)
+
+        
 
 
     
