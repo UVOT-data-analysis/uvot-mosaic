@@ -3,6 +3,7 @@ from astropy.io import fits
 import glob
 import os
 import subprocess
+from reproject import reproject_exact
 
 from config_uvot_mosaic import __ROOT__
 
@@ -499,10 +500,33 @@ def corr_sk(obs_folder, obs_filter):
 
         # for each image extension, make the new image
         for i in range(1,len(hdu_sk)):
-            
-            # divide by lss and multiply by mask
-            new_sk_array = hdu_sk[i].data / hdu_lss[i].data * hdu_mask[i].data
 
+            # divide by lss and multiply by mask
+            
+            # (but fix the LSS if it doesn't have the right shape)
+            if hdu_lss[i].data.shape != hdu_sk[i].data.shape:
+                print('LSS dimension mismatch: ')
+                print(lss_image + ', extension ' + str(i))
+                
+                # - option 1: use reproject
+                lss_new, _ = reproject_exact(hdu_lss[i], hdu_sk[i].header)
+                
+                # - option 2: delete or append columns/rows
+                #lss_new = hdu_lss[i].data
+                #if lss_new.shape[0] < hdu_sk[i].data.shape[0]:
+                #    lss_new = np.insert(lss_new, 0, 0, axis=0)
+                #if lss_new.shape[0] > hdu_sk[i].data.shape[0]:
+                #    lss_new = np.delete(lss_new, 0, axis=0)
+                #if lss_new.shape[1] < hdu_sk[i].data.shape[1]:
+                #    lss_new = np.insert(lss_new, 0, 0, axis=1)
+                #if lss_new.shape[1] > hdu_sk[i].data.shape[1]:
+                #    lss_new = np.delete(lss_new, 0, axis=1)
+                
+                new_sk_array = hdu_sk[i].data / lss_new * hdu_mask[i].data
+            else:
+                new_sk_array = hdu_sk[i].data / hdu_lss[i].data * hdu_mask[i].data
+
+ 
             # remove NaNs from dividing by 0
             new_sk_array[np.isnan(new_sk_array)] = 0
  
