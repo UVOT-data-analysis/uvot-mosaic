@@ -147,7 +147,6 @@ def uvot_deep(input_folders,
             if not os.path.isfile(att_uat):
                 print('Could not create ', att_uat)
                 print('Skipping segment')
-                pdb.set_trace()
                 continue
 
             # scattered light images
