@@ -142,6 +142,12 @@ def uvot_deep(input_folders,
                 cmd = 'uvotattcorr attfile=' + att_sat + ' corrfile=' + corr_file + ' outfile=' + att_uat
                 subprocess.run(cmd, shell=True)
 
+            # if the file wasn't created (likely because of no aspect
+            # corrections for anything), this segment can't be processed
+            if not os.path.isfile(att_uat):
+                print('Could not create ', att_uat)
+                print('Skipping segment')
+                continue
 
             # scattered light images
             if scattered_light:
