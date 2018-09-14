@@ -15,7 +15,7 @@ import pdb
 def uvot_deep(input_folders,
                   output_prefix,
                   filter_list=['w2','m2','w1','uu','bb','vv'],
-                  scattered_light=False):
+                  calc_scattered_light=False):
     """
     For a set of UVOT images downloaded from HEASARC, do processing on each snapshot:
     * create a counts image
@@ -48,7 +48,7 @@ def uvot_deep(input_folders,
     filter_list : list of strings
         some or all of ['w2','m2','w1','uu','bb','vv'] (default is all of them)
 
-    scattered_light : boolean (default=False)
+    calc_scattered_light : boolean (default=False)
         choose whether to generate scattered light images - this is turned off until LMZH
         figures out which fits files should be used and writes understandable documentation
 
@@ -150,7 +150,7 @@ def uvot_deep(input_folders,
                 continue
 
             # scattered light images
-            if scattered_light:
+            if calc_scattered_light:
                 scattered_light(obs, filt, teldef[filt])
 
             # mask and bad pixel images (which also fixes the exposure map)
@@ -185,14 +185,14 @@ def uvot_deep(input_folders,
 
             hdu_sk_all = append_ext(hdu_sk_all, image_info['sk_image_corr'][-1], image_info)
             hdu_ex_all = append_ext(hdu_ex_all, image_info['exp_image_mask'][-1], image_info)
-            if scattered_light:
+            if calc_scattered_light:
                 hdu_sl_all = append_ext(hdu_sl_all, image_info['sl_image'][-1], image_info)
             
 
         # write out all of the combined extensions
         hdu_sk_all.writeto(output_prefix + filt + '_sk_all.fits', overwrite=True)
         hdu_ex_all.writeto(output_prefix + filt + '_ex_all.fits', overwrite=True)
-        if scattered_light:
+        if calc_scattered_light:
             hdu_sl_all.writeto(output_prefix + filt + '_sl_all.fits', overwrite=True)
             
                     
