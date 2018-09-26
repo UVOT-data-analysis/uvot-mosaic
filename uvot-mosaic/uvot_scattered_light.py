@@ -164,14 +164,15 @@ def sl_manual(sk_image, sl_image, sl_file, fix_redo=False):
                                                        sl_data['flat_param'][ind])
                 sl_data['exp_param'][ind] = exp_param
                 sl_data['flat_param'][ind] = flat_param                
-                sl_data.write(sl_file)
+                sl_data.write(sl_file, format='ascii', overwrite=True)
             elif tstart not in sl_data['tstart']:
-                exp_param, flat_param = run_manual(hdu_sk[i], hdu_sl[i], 1.5, 0.35)
+                #exp_param, flat_param = run_manual(hdu_sk[i], hdu_sl[i], 1.5, 0.35)
+                exp_param, flat_param = run_manual(hdu_sk[i], hdu_sl[i], 1.2, 0.4)
                 sl_data.add_row([tstart, exp_param, flat_param])
-                sl_data.write(sl_file, format='ascii')
+                sl_data.write(sl_file, format='ascii', overwrite=True)
             # otherwise, skip it
             else:
-                print('skipping segment '+str(i))
+                print('skipping extension '+str(i))
             
 
 
