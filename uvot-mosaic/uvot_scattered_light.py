@@ -83,7 +83,6 @@ def fix_sl(input_folders,
             continue
 
 
-
         for obs in obs_list:
 
             print('')
@@ -120,10 +119,28 @@ def fix_sl(input_folders,
 def sl_apply(sk_image, sl_image, sl_file):
     """
     Apply the manual correction to create/save the new counts images
+
+    Parameters
+    ----------
+    sk_image : string
+        path+file name for the sky (counts) image
+
+    sl_image : string
+        path+file name for the scattered light image
+
+    sl_file : string
+        path+file name to save parameters for best-fit SL image
+
+
+    Returns
+    -------
+    nothing
+    
     """
 
     print('applying SL corrections to sky image')
-    
+
+    # read SL corrections
     sl_data = Table.read(sl_file, format='ascii')
     
     with fits.open(sk_image) as hdu_sk, fits.open(sl_image) as hdu_sl:
@@ -192,6 +209,7 @@ def sl_manual(sk_image, sl_image, sl_file, fix_redo=False):
             # that time isn't in the table
             # -> do the calculations
             if tstart in sl_data['tstart'] and fix_redo == True:
+                print('starting manual corrections for extension '+str(i))
                 ind = np.where(tstart == sl_data['tstart'])[0][0]
                 exp_param, flat_param = run_manual(hdu_sk[i], hdu_sl[i], sl_data['exp_param'][ind],
                                                        sl_data['flat_param'][ind])
@@ -199,13 +217,14 @@ def sl_manual(sk_image, sl_image, sl_file, fix_redo=False):
                 sl_data['flat_param'][ind] = flat_param                
                 sl_data.write(sl_file, format='ascii', overwrite=True)
             elif tstart not in sl_data['tstart']:
+                print('starting manual corrections for extension '+str(i))
                 #exp_param, flat_param = run_manual(hdu_sk[i], hdu_sl[i], 1.5, 0.35)
                 exp_param, flat_param = run_manual(hdu_sk[i], hdu_sl[i], 1.2, 0.4)
                 sl_data.add_row([tstart, exp_param, flat_param])
                 sl_data.write(sl_file, format='ascii', overwrite=True)
             # otherwise, skip it
             else:
-                print('skipping extension '+str(i))
+                print('skipping manual corrections for extension '+str(i))
             
 
 
@@ -213,6 +232,24 @@ def sl_manual(sk_image, sl_image, sl_file, fix_redo=False):
 def run_manual(hdu_sk, hdu_sl, exp_param, flat_param):
     """
     The nuts and bolts of getting/updating SL stretch
+
+    Parameters
+    ----------
+    hdu_sk : HDU
+        hdu for the sky (counts) image
+
+    hdu_sl : HDU
+        hdu for the scattered light image
+
+    exp_param : float
+        value for the exp_param to apply to the SL image
+
+    fix_redo : boolean (default=False)
+        choose whether to redo any of the ones that have already been done, otherwise just skip to new ones
+
+    Returns
+    -------
+    nothing
 
     """
 
