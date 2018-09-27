@@ -320,7 +320,16 @@ def scattered_light(obs_folder, obs_filter, teldef_file):
             
             # append it to the big fits file
             with fits.open('temp.sl') as hdu_sl_slice:
-                hdu_sl.append(fits.ImageHDU(data=hdu_sl_slice[0].data, header=hdu_sl_slice[0].header))
+
+                # fix the image if it doesn't have the right shape
+                if hdu_sl_slice[0].data.shape != hdu_sk[i].data.shape:
+                    print('SL dimension mismatch: ')
+                    print(sk_image + ', extension ' + str(i))
+
+                    sl_new, _ = reproject_exact(hdu_sl_slice[0], hdu_sk[i].header)
+                    hdu_sl.append(fits.ImageHDU(data=sl_new, header=hdu_sk[i].header))
+                else:
+                    hdu_sl.append(fits.ImageHDU(data=hdu_sl_slice[0].data, header=hdu_sl_slice[0].header))
                 
             # delete the image
             os.remove('temp.sl')
