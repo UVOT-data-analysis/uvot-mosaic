@@ -22,7 +22,7 @@ def offset_mosaic(input_prefix,
                       filter_list=['w2','m2','w1','uu','bb','vv'],
                       min_exp_w2=170, min_exp_m2=230, min_exp_w1=200,
                       min_exp_uu=0, min_exp_bb=0, min_exp_vv=0,
-                      restack_id=False, mask_file=None):
+                      restack_id=False, mask_file=None, use_scattered_light=False):
     """
     Create mosaics in which the background varies between snapshots, so they need to be adjusted to match.
 
@@ -48,6 +48,9 @@ def offset_mosaic(input_prefix,
     mask_file : string
         Name of ds9 region file with circles.  These areas will be masked when calculating the biweight of overlapping areas.
 
+    use_scattered_light : boolean (default = False)
+        If set to True, this will use the sky (counts) file name associated with the scattered light corrections, rather than the file that just has the LSS corrections.
+
     Returns
     -------
     nothing
@@ -57,7 +60,12 @@ def offset_mosaic(input_prefix,
     # make dictionary with the minimum exposure times
     min_exp = {'w2':min_exp_w2, 'm2':min_exp_m2, 'w1':min_exp_w1,
                    'uu':min_exp_uu, 'bb':min_exp_bb, 'vv':min_exp_vv}
-    
+
+    # set a file tag for using images corrected for scattered light
+    sl_tag = ''
+    if use_scattered_light:
+        sl_tag = '_sl'
+        
 
     # go through each filter to build images
 
@@ -68,7 +76,7 @@ def offset_mosaic(input_prefix,
         # ------------------------
 
         # open the images
-        with fits.open(input_prefix + filt + '_sk_all.fits') as hdu_sk, fits.open(input_prefix + filt + '_ex_all.fits') as hdu_ex:
+        with fits.open(input_prefix + filt + '_sk_all'+sl_tag+'.fits') as hdu_sk, fits.open(input_prefix + filt + '_ex_all.fits') as hdu_ex:
 
             # delete the 0th extensions (no images there, and they break later steps)
             del hdu_sk[0]
@@ -99,7 +107,7 @@ def offset_mosaic(input_prefix,
                 file_prefix = output_prefix + str(targ) + '_' + filt
 
                 # check if this one is done already (by looking for a count rate image)
-                if os.path.isfile(file_prefix + '_cr.fits') and (restack_id == False):
+                if os.path.isfile(file_prefix + '_cr'+sl_tag+'.fits') and (restack_id == False):
                     print(str(targ)+' is already done')
                     print('')
                     continue
@@ -135,21 +143,21 @@ def offset_mosaic(input_prefix,
                 hdu_sk_corr, _ = correct_sk(temp_hdu_sk, temp_hdu_ex, biweight_cps)
 
                 # write out to files
-                hdu_sk_corr.writeto(file_prefix + '_sk_all.fits', overwrite=True)
-                temp_hdu_ex.writeto(file_prefix + '_ex_all.fits', overwrite=True)
+                hdu_sk_corr.writeto(file_prefix + '_sk_all'+sl_tag+'.fits', overwrite=True)
+                temp_hdu_ex.writeto(file_prefix + '_ex_all'+sl_tag+'.fits', overwrite=True)
                 
                 # stack with uvotimsum
-                cmd = 'uvotimsum ' + file_prefix + '_sk_all.fits ' + \
-                    file_prefix + '_sk.fits exclude=none clobber=yes'
+                cmd = 'uvotimsum ' + file_prefix + '_sk_all'+sl_tag+'.fits ' + \
+                    file_prefix + '_sk'+sl_tag+'.fits exclude=none clobber=yes'
                 subprocess.run(cmd, shell=True)
-                cmd = 'uvotimsum ' + file_prefix + '_ex_all.fits ' + \
-                    file_prefix + '_ex.fits method=EXPMAP exclude=none clobber=yes'
+                cmd = 'uvotimsum ' + file_prefix + '_ex_all'+sl_tag+'.fits ' + \
+                    file_prefix + '_ex'+sl_tag+'.fits method=EXPMAP exclude=none clobber=yes'
                 subprocess.run(cmd, shell=True)
 
                 # make a count rate image too
-                with fits.open(file_prefix + '_sk.fits') as h_sk, fits.open(file_prefix + '_ex.fits') as h_ex:
+                with fits.open(file_prefix + '_sk'+sl_tag+'.fits') as h_sk, fits.open(file_prefix + '_ex'+sl_tag+'.fits') as h_ex:
                     cr_hdu = fits.PrimaryHDU(data=h_sk[1].data/h_ex[1].data, header=h_sk[1].header)
-                    cr_hdu.writeto(file_prefix + '_cr.fits', overwrite=True)
+                    cr_hdu.writeto(file_prefix + '_cr'+sl_tag+'.fits', overwrite=True)
                
                 # delete temporary files
                 subprocess.run('rm targ_temp_*.fits', shell=True)
@@ -161,17 +169,17 @@ def offset_mosaic(input_prefix,
 
 
         # output file names
-        output_file_sk = output_prefix + filt + '_sk.fits'
-        output_file_sk_all = output_prefix + filt + '_sk_all.fits'
-        output_file_ex = output_prefix + filt + '_ex.fits'
-        output_file_ex_all = output_prefix + filt + '_ex_all.fits'
-        output_file_cr = output_prefix + filt + '_cr.fits'
+        output_file_sk = output_prefix + filt + '_sk'+sl_tag+'.fits'
+        output_file_sk_all = output_prefix + filt + '_sk_all'+sl_tag+'.fits'
+        output_file_ex = output_prefix + filt + '_ex'+sl_tag+'.fits'
+        output_file_ex_all = output_prefix + filt + '_ex_all'+sl_tag+'.fits'
+        output_file_cr = output_prefix + filt + '_cr'+sl_tag+'.fits'
 
         # start out the stacking with the first target ID
-        subprocess.run('cp '+ output_prefix + str(target_ids[0]) + '_' + filt + '_sk.fits ' + output_file_sk, shell=True)
-        subprocess.run('cp '+ output_prefix + str(target_ids[0]) + '_' + filt + '_ex.fits ' + output_file_ex, shell=True)
-        subprocess.run('cp '+ output_prefix + str(target_ids[0]) + '_' + filt + '_sk.fits ' + output_file_sk_all, shell=True)
-        subprocess.run('cp '+ output_prefix + str(target_ids[0]) + '_' + filt + '_ex.fits ' + output_file_ex_all, shell=True)
+        subprocess.run('cp '+ output_prefix + str(target_ids[0]) + '_' + filt + '_sk'+sl_tag+'.fits ' + output_file_sk, shell=True)
+        subprocess.run('cp '+ output_prefix + str(target_ids[0]) + '_' + filt + '_ex'+sl_tag+'.fits ' + output_file_ex, shell=True)
+        subprocess.run('cp '+ output_prefix + str(target_ids[0]) + '_' + filt + '_sk'+sl_tag+'.fits ' + output_file_sk_all, shell=True)
+        subprocess.run('cp '+ output_prefix + str(target_ids[0]) + '_' + filt + '_ex'+sl_tag+'.fits ' + output_file_ex_all, shell=True)
         # make a count rate image too
         with fits.open(output_file_sk) as h_sk, fits.open(output_file_ex) as h_ex:
             cr_hdu = fits.PrimaryHDU(data=h_sk[1].data/h_ex[1].data, header=h_sk[1].header)
@@ -186,8 +194,8 @@ def offset_mosaic(input_prefix,
         while len(remaining_ids) > 0:
 
             # file names for the target IDs
-            remaining_id_files_sk = [output_prefix + str(t) + '_' + filt + '_sk.fits' for t in remaining_ids]
-            remaining_id_files_ex = [output_prefix + str(t) + '_' + filt + '_ex.fits' for t in remaining_ids]
+            remaining_id_files_sk = [output_prefix + str(t) + '_' + filt + '_sk'+sl_tag+'.fits' for t in remaining_ids]
+            remaining_id_files_ex = [output_prefix + str(t) + '_' + filt + '_ex'+sl_tag+'.fits' for t in remaining_ids]
             
             # find the target ID that has the best overlap with current mosaic
             # (returns index and the overlapping pixels)
