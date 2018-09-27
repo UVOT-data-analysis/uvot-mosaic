@@ -110,10 +110,44 @@ def fix_sl(input_folders,
             # do the manual adjusting
             sl_manual(sk_image, sl_image, sl_file, fix_redo=fix_redo)
 
+            # apply the parameters to the images
+            sl_apply(sk_image, sl_image, sl_file)
+            
             #pdb.set_trace()
 
 
-            
+
+def sl_apply(sk_image, sl_image, sl_file):
+    """
+    Apply the manual correction to create/save the new counts images
+    """
+
+    print('applying SL corrections to sky image')
+    
+    sl_data = Table.read(sl_file, format='ascii')
+    
+    with fits.open(sk_image) as hdu_sk, fits.open(sl_image) as hdu_sl:
+
+        # HDU to hold the new images
+        hdu_new = fits.HDUList()
+        # first empty extension
+        hdu_new.append(fits.ImageHDU(data=hdu_sk[0].data, header=hdu_sk[0].header))
+
+        for i in range(1,len(hdu_sk)):
+
+            # calculate scaled SL image
+            new_image = calc_counts_image(hdu_sk[i].data, hdu_sl[i].data,
+                                              sl_data['exp_param'][i-1],
+                                              sl_data['flat_param'][i-1])
+
+            # append to HDU list
+            hdu_new.append(fits.ImageHDU(data=new_image, header=hdu_sk[i].header))
+
+        # write out the file
+        hdu_new.writeto(sk_image.replace('_corr.img','_corr_sl.img'), overwrite=True)
+
+
+
 def sl_manual(sk_image, sl_image, sl_file, fix_redo=False):
     """
     Wrapper for the part where there is manual adjusting
