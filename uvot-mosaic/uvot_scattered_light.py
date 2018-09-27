@@ -109,12 +109,11 @@ def fix_sl(input_folders,
 
             # do the manual adjusting
             sl_manual(sk_image, sl_image, sl_file, fix_redo=fix_redo)
-            
+
             #pdb.set_trace()
 
 
-
-
+            
 def sl_manual(sk_image, sl_image, sl_file, fix_redo=False):
     """
     Wrapper for the part where there is manual adjusting
@@ -220,28 +219,10 @@ def run_manual(hdu_sk, hdu_sl, exp_param, flat_param):
 
         
         # calculate scaled SL image
-        
-        # - grab the array out of the SL hdu
-        sl_data = copy.copy(hdu_sl.data)
+        new_image = calc_counts_image(hdu_sk.data, hdu_sl.data,
+                                          exp_param, flat_param)
 
-        # - ignore the giant 0 border
-        fov = np.where(sl_data > 0)
-        
-        # - subtract the minimum
-        sl_data[fov] -= np.min(sl_data[fov])
-        # - make the circle more prominent relative to bg
-        sl_data[fov] = exp_param**sl_data[fov]
-        # - make the mean = 1
-        sl_data = sl_data / np.mean(sl_data[fov])
-        # - flatten it
-        m = np.mean(sl_data[fov])
-        sl_data -= m
-        sl_data *= flat_param
-        sl_data += m
-        
-         
-        # make a new image: counts / scattered light
-        new_image = hdu_sk.data / sl_data
+        # smooth new image for displaying
         hdu_sk_smooth_new.data = convolve(new_image, kernel)
 
         
@@ -275,3 +256,29 @@ def run_manual(hdu_sk, hdu_sl, exp_param, flat_param):
     # return the results
     return exp_param, flat_param
     
+
+def calc_counts_image(sk_array, sl_array, exp_param, flat_param):
+    """
+    The math calculation:
+    using the counts and SL images, output the new corrected counts image
+    """
+    
+    # - ignore the giant 0 border
+    fov = np.where(sl_array > 0)
+        
+    # - subtract the minimum
+    sl_array[fov] -= np.min(sl_array[fov])
+    # - make the circle more prominent relative to bg
+    sl_array[fov] = exp_param**sl_array[fov]
+    # - make the mean = 1
+    sl_array = sl_array / np.mean(sl_array[fov])
+    # - flatten it
+    m = np.mean(sl_array[fov])
+    sl_array -= m
+    sl_array *= flat_param
+    sl_array += m
+        
+    # make a new image: counts / scattered light
+    new_image = sk_array / sl_array
+
+    return new_image
