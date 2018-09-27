@@ -82,7 +82,10 @@ def fix_sl(input_folders,
             print('No images found for filter: ' + filt)
             continue
 
+        # HDU to keep all the HDUs together
+        hdu_all = fits.HDUList()
 
+        
         for obs in obs_list:
 
             print('')
@@ -110,10 +113,30 @@ def fix_sl(input_folders,
             sl_manual(sk_image, sl_image, sl_file, fix_redo=fix_redo)
 
             # apply the parameters to the images
-            sl_apply(sk_image, sl_image, sl_file)
-            
-            #pdb.set_trace()
+            hdu_obs = sl_apply(sk_image, sl_image, sl_file)
 
+            # append the HDUs to the master list
+            if len(hdu_all) == 0:
+                hdu_all += copy.deepcopy(hdu_obs)
+            else:
+                hdu_all += copy.deepcopy(hdu_obs[1:])
+
+
+        # put the master HDU list into the same order as the uvot_deep counts image
+        hdu_all_reorder = fits.HDUList()
+        hdu_all_reorder.append(hdu_obs[0])
+
+        hdu_all_extname = [hdu_all[i].header['EXTNAME'] for i in range(1,len(hdu_all))]
+        
+        with fits.open(output_prefix + filt + '_sk_all.fits') as hdu_orig:
+
+            for i in range(1,len(hdu_orig)):
+
+                match_ind = hdu_all_extname.index(hdu_orig[i].header['EXTNAME'])
+                hdu_all_reorder.append(hdu_all[match_ind+1])
+
+        # save it
+        hdu_all_reorder.writeto(output_prefix + filt + '_sk_all_sl.fits', overwrite=True)
 
 
 def sl_apply(sk_image, sl_image, sl_file):
@@ -134,7 +157,8 @@ def sl_apply(sk_image, sl_image, sl_file):
 
     Returns
     -------
-    nothing
+    hdu_new : HDU
+        the list of HDUs with corrected counts images
     
     """
 
@@ -163,7 +187,9 @@ def sl_apply(sk_image, sl_image, sl_file):
         # write out the file
         hdu_new.writeto(sk_image.replace('_corr.img','_corr_sl.img'), overwrite=True)
 
-
+    # return all the adjusted HDUs
+    return hdu_new
+    
 
 def sl_manual(sk_image, sl_image, sl_file, fix_redo=False):
     """
