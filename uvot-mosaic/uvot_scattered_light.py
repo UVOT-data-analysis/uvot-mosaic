@@ -294,9 +294,7 @@ def run_manual(hdu_sk, hdu_sl, exp_param, flat_param):
         fig = plt.figure(figsize=(10,5),
                              num='exp_param='+str(exp_param)+', flat_param='+str(flat_param))
         
-        # plot original
-        f = aplpy.FITSFigure(hdu_sk_smooth, figure=fig,
-                                subplot=[0, 0, 0.45, 1] )
+        # set up min/max
         #vmin = np.percentile(hdu_sk_smooth.data[hdu_sk_smooth.data > 0], 2)
         #vmin = biweight_location(hdu_sk_smooth.data[hdu_sk_smooth.data > 0])/1.5
         #vmin = biweight_location(hdu_sk_smooth.data[hdu_sk_smooth.data > 0]) \
@@ -305,8 +303,17 @@ def run_manual(hdu_sk, hdu_sl, exp_param, flat_param):
         vmin = np.mean(filt.data[~filt.mask]) - 3*np.std(filt.data[~filt.mask])
         vmax = np.percentile(hdu_sk_smooth.data[hdu_sk_smooth.data > 0], 99)
 
-        vmax = np.percentile(hdu_sk_smooth.data[hdu_sk_smooth.data > 0], 99)
-        f.show_colorscale(cmap='magma', stretch='log', vmin=vmin, vmax=vmax)
+        # manually calculate log(image)
+        hdu_sk_smooth.data = log_image(hdu_sk_smooth.data, vmin, vmax)
+
+ 
+        # plot original
+        f = aplpy.FITSFigure(hdu_sk_smooth, figure=fig,
+                                subplot=[0, 0, 0.45, 1] )       
+        
+        #f.show_colorscale(cmap='magma', stretch='log', vmin=vmin, vmax=vmax)
+        f.show_colorscale(cmap='magma', stretch='linear', vmin=np.min(hdu_sk_smooth.data),
+                              vmax=np.max(hdu_sk_smooth.data))
         f.hide_xaxis_label()
         f.hide_xtick_labels()
         f.hide_yaxis_label()
@@ -322,13 +329,17 @@ def run_manual(hdu_sk, hdu_sl, exp_param, flat_param):
         # smooth new image for displaying
         hdu_sk_smooth_new.data = convolve(new_image, kernel)
 
+        # manually calculate log(image)
+        hdu_sk_smooth_new.data = log_image(hdu_sk_smooth_new.data, vmin, vmax)
         
         # plot the new image
         f = aplpy.FITSFigure(hdu_sk_smooth_new, figure=fig,
                                 subplot=[0.5, 0, 0.45, 1] )
         #vmin = np.percentile(hdu_sk_smooth_new.data[hdu_sk_smooth.data > 0], 2)
         #vmin = biweight_location(hdu_sk_smooth_new.data[hdu_sk_smooth_new.data > 0])
-        f.show_colorscale(cmap='magma', stretch='log', vmin=vmin, vmax=vmax)
+        #f.show_colorscale(cmap='magma', stretch='log', vmin=vmin, vmax=vmax)
+        f.show_colorscale(cmap='magma', stretch='linear', vmin=np.min(hdu_sk_smooth_new.data),
+                              vmax=np.max(hdu_sk_smooth_new.data))
         f.hide_xaxis_label()
         f.hide_xtick_labels()
         f.hide_yaxis_label()
@@ -352,7 +363,25 @@ def run_manual(hdu_sk, hdu_sl, exp_param, flat_param):
 
     # return the results
     return exp_param, flat_param
+
+
+def log_image(image, min_val, max_val, ds9_a=1000):
+    """
+    Use the ds9 formalism to calculate a log (since aplpy log isn't playing nicely with negatives)
+    """
+
+    # set everything below/above min/max to min/max
+    image[image < min_val] = min_val
+    image[image > max_val] = max_val
+
+    # normalize to 0-1
+    image = (image - min_val)/(max_val - min_val)
+
+    # take log
+    return np.log10(ds9_a * image + 1)/np.log10(ds9_a)
     
+    
+
 
 def calc_counts_image(sk_array, sl_array, exp_param, flat_param):
     """
