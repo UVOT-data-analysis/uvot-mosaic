@@ -235,7 +235,9 @@ def sl_manual(sk_image, sl_image, sl_file, fix_redo=False):
             # that time isn't in the table
             # -> do the calculations
             if tstart in sl_data['tstart'] and fix_redo == True:
-                print('starting manual corrections for extension '+str(i))
+                print('\nstarting manual corrections for extension '+str(i))
+                print('   larger exp_param -> more prominent circle')
+                print('   larger flat_param -> steeper radial gradient')
                 ind = np.where(tstart == sl_data['tstart'])[0][0]
                 exp_param, flat_param = run_manual(hdu_sk[i], hdu_sl[i], sl_data['exp_param'][ind],
                                                        sl_data['flat_param'][ind])
@@ -243,7 +245,9 @@ def sl_manual(sk_image, sl_image, sl_file, fix_redo=False):
                 sl_data['flat_param'][ind] = flat_param                
                 sl_data.write(sl_file, format='ascii', overwrite=True)
             elif tstart not in sl_data['tstart']:
-                print('starting manual corrections for extension '+str(i))
+                print('\nstarting manual corrections for extension '+str(i))
+                print('   larger exp_param -> more prominent circle')
+                print('   larger flat_param -> steeper radial gradient')
                 #exp_param, flat_param = run_manual(hdu_sk[i], hdu_sl[i], 1.5, 0.35)
                 exp_param, flat_param = run_manual(hdu_sk[i], hdu_sl[i], 1.2, 0.4)
                 sl_data.add_row([tstart, exp_param, flat_param])
