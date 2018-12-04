@@ -75,7 +75,7 @@ def fix_sl(input_folders,
     for filt in filter_list:
 
         # get the images that have observations in that filter
-        obs_list = [im for im in filter_exist.keys() if filt in filter_exist[im]]
+        obs_list = [im for im in sorted(filter_exist.keys()) if filt in filter_exist[im]]
 
         # check that images exist
         if len(obs_list) == 0:
