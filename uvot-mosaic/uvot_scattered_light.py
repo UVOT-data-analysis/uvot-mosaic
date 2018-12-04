@@ -293,7 +293,7 @@ def run_manual(hdu_sk, hdu_sl, exp_param, flat_param):
     #vmin = biweight_location(hdu_sk_smooth.data[hdu_sk_smooth.data > 0]) \
     #       - biweight_midvariance(hdu_sk_smooth.data[hdu_sk_smooth.data > 0])
     filt = sigma_clip(hdu_sk_smooth.data[hdu_sk_smooth.data > 0], sigma=2, iters=3)
-    vmin = np.mean(filt.data[~filt.mask]) - 3*np.std(filt.data[~filt.mask])
+    vmin = np.mean(filt.data[~filt.mask]) - 2.5*np.std(filt.data[~filt.mask])
     vmax = np.percentile(hdu_sk_smooth.data[hdu_sk_smooth.data > 0], 99)
 
     # manually calculate log(image)
