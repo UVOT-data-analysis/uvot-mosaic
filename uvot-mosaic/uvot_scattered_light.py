@@ -283,6 +283,16 @@ def run_manual(hdu_sk, hdu_sl, exp_param, flat_param):
     kernel = Gaussian2DKernel(8)
     hdu_sk_smooth = copy.copy(hdu_sk)
     hdu_sk_smooth.data = convolve(hdu_sk.data, kernel)
+    # set up min/max
+    #vmin = np.percentile(hdu_sk_smooth.data[hdu_sk_smooth.data > 0], 2)
+    #vmin = biweight_location(hdu_sk_smooth.data[hdu_sk_smooth.data > 0])/1.5
+    #vmin = biweight_location(hdu_sk_smooth.data[hdu_sk_smooth.data > 0]) \
+    #       - biweight_midvariance(hdu_sk_smooth.data[hdu_sk_smooth.data > 0])
+    filt = sigma_clip(hdu_sk_smooth.data[hdu_sk_smooth.data > 0], sigma=2, iters=3)
+    vmin = np.mean(filt.data[~filt.mask]) - 3*np.std(filt.data[~filt.mask])
+    vmax = np.percentile(hdu_sk_smooth.data[hdu_sk_smooth.data > 0], 99)
+    # manually calculate log(image)
+    hdu_sk_smooth.data = log_image(hdu_sk_smooth.data, vmin, vmax)
 
     # make a copy to hold new smoothed images
     hdu_sk_smooth_new = copy.copy(hdu_sk)
@@ -294,18 +304,6 @@ def run_manual(hdu_sk, hdu_sl, exp_param, flat_param):
         fig = plt.figure(figsize=(10,5),
                              num='exp_param='+str(exp_param)+', flat_param='+str(flat_param))
         
-        # set up min/max
-        #vmin = np.percentile(hdu_sk_smooth.data[hdu_sk_smooth.data > 0], 2)
-        #vmin = biweight_location(hdu_sk_smooth.data[hdu_sk_smooth.data > 0])/1.5
-        #vmin = biweight_location(hdu_sk_smooth.data[hdu_sk_smooth.data > 0]) \
-        #       - biweight_midvariance(hdu_sk_smooth.data[hdu_sk_smooth.data > 0])
-        filt = sigma_clip(hdu_sk_smooth.data[hdu_sk_smooth.data > 0], sigma=2, iters=3)
-        vmin = np.mean(filt.data[~filt.mask]) - 3*np.std(filt.data[~filt.mask])
-        vmax = np.percentile(hdu_sk_smooth.data[hdu_sk_smooth.data > 0], 99)
-
-        # manually calculate log(image)
-        hdu_sk_smooth.data = log_image(hdu_sk_smooth.data, vmin, vmax)
-
  
         # plot original
         f = aplpy.FITSFigure(hdu_sk_smooth, figure=fig,
@@ -354,7 +352,7 @@ def run_manual(hdu_sk, hdu_sl, exp_param, flat_param):
 
         # parse input
         input_parse = [i for i in input_info.replace(',',' ').split(' ') if i != '']
-        if len(input_parse) == 1:
+        if (len(input_parse) == 0) or (len(input_parse) == 1):
             break
         if len(input_parse) == 2:
             exp_param = float(input_parse[0])
