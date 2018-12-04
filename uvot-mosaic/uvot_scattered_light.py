@@ -291,6 +291,7 @@ def run_manual(hdu_sk, hdu_sl, exp_param, flat_param):
     filt = sigma_clip(hdu_sk_smooth.data[hdu_sk_smooth.data > 0], sigma=2, iters=3)
     vmin = np.mean(filt.data[~filt.mask]) - 3*np.std(filt.data[~filt.mask])
     vmax = np.percentile(hdu_sk_smooth.data[hdu_sk_smooth.data > 0], 99)
+
     # manually calculate log(image)
     hdu_sk_smooth.data = log_image(hdu_sk_smooth.data, vmin, vmax)
 
@@ -307,11 +308,12 @@ def run_manual(hdu_sk, hdu_sl, exp_param, flat_param):
  
         # plot original
         f = aplpy.FITSFigure(hdu_sk_smooth, figure=fig,
-                                subplot=[0, 0, 0.45, 1] )       
-        
+                                subplot=[0, 0, 0.45, 1] )
+
+        im_scale = [np.nanmin(hdu_sk_smooth.data), np.nanmax(hdu_sk_smooth.data)]
+                                
         #f.show_colorscale(cmap='magma', stretch='log', vmin=vmin, vmax=vmax)
-        f.show_colorscale(cmap='magma', stretch='linear', vmin=np.min(hdu_sk_smooth.data),
-                              vmax=np.max(hdu_sk_smooth.data))
+        f.show_colorscale(cmap='magma', stretch='linear', vmin=im_scale[0], vmax=im_scale[1])
         f.hide_xaxis_label()
         f.hide_xtick_labels()
         f.hide_yaxis_label()
@@ -336,8 +338,7 @@ def run_manual(hdu_sk, hdu_sl, exp_param, flat_param):
         #vmin = np.percentile(hdu_sk_smooth_new.data[hdu_sk_smooth.data > 0], 2)
         #vmin = biweight_location(hdu_sk_smooth_new.data[hdu_sk_smooth_new.data > 0])
         #f.show_colorscale(cmap='magma', stretch='log', vmin=vmin, vmax=vmax)
-        f.show_colorscale(cmap='magma', stretch='linear', vmin=np.min(hdu_sk_smooth_new.data),
-                              vmax=np.max(hdu_sk_smooth_new.data))
+        f.show_colorscale(cmap='magma', stretch='linear', vmin=im_scale[0], vmax=im_scale[1])
         f.hide_xaxis_label()
         f.hide_xtick_labels()
         f.hide_yaxis_label()
@@ -386,23 +387,26 @@ def calc_counts_image(sk_array, sl_array, exp_param, flat_param):
     The math calculation:
     using the counts and SL images, output the new corrected counts image
     """
-    
+
+    # copy the SL array so the original isn't modified (grumble grumble)
+    sl_copy = sl_array.copy()
+
     # - ignore the giant 0 border
-    fov = np.where(sl_array > 0)
-        
+    fov = np.where(sl_copy > 0)
+    
     # - subtract the minimum
-    sl_array[fov] -= np.min(sl_array[fov])
+    sl_copy[fov] -= np.min(sl_copy[fov])
     # - make the circle more prominent relative to bg
-    sl_array[fov] = exp_param**sl_array[fov]
+    sl_copy[fov] = exp_param**sl_copy[fov]
     # - make the mean = 1
-    sl_array = sl_array / np.mean(sl_array[fov])
+    sl_copy = sl_copy / np.mean(sl_copy[fov])
     # - flatten it
-    m = np.mean(sl_array[fov])
-    sl_array -= m
-    sl_array *= flat_param
-    sl_array += m
+    m = np.mean(sl_copy[fov])
+    sl_copy -= m
+    sl_copy *= flat_param
+    sl_copy += m
         
     # make a new image: counts / scattered light
-    new_image = sk_array / sl_array
+    new_image = sk_array / sl_copy
 
     return new_image
