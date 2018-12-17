@@ -141,7 +141,7 @@ def offset_mosaic(input_prefix,
 
                 # apply to the counts images
                 hdu_sk_corr, _ = correct_sk(temp_hdu_sk, temp_hdu_ex, biweight_cps)
-
+                
                 # write out to files
                 hdu_sk_corr.writeto(file_prefix + '_sk_all'+sl_tag+'.fits', overwrite=True)
                 temp_hdu_ex.writeto(file_prefix + '_ex_all'+sl_tag+'.fits', overwrite=True)
@@ -531,6 +531,9 @@ def correct_sk(hdu_sk, hdu_ex, overlap_cps):
     delta_cps : array of floats
         the amount (in counts/sec/pixel) that each image was shifted
 
+    hdu_delta_counts : astropy hdu object
+        the amount (in counts/pixel) that each image was shifted
+
     """
 
     print('')
@@ -543,7 +546,9 @@ def correct_sk(hdu_sk, hdu_ex, overlap_cps):
 
     # array to keep track of how much each counts image is adjusted
     delta_cps = np.zeros(len(hdu_sk))
-    
+
+    # HDU to keep track of counts offsets
+    hdu_delta_counts = copy.deepcopy(hdu_ex)
     
     for h in range(len(hdu_sk)):
         # do the offset
@@ -551,10 +556,11 @@ def correct_sk(hdu_sk, hdu_ex, overlap_cps):
         hdu_sk[h].data = (hdu_sk[h].data/hdu_ex[h].data + delta_cps[h]) * hdu_ex[h].data
         # use exposure map to set border to 0
         hdu_sk[h].data[hdu_ex[h].data == 0] = 0
-        
-        
+        # save counts too
+        hdu_delta_counts[h].data = delta_cps[h] * hdu_ex[h].data
 
-    return hdu_sk, delta_cps
+
+    return hdu_sk, delta_cps, hdu_delta_counts
 
 
         
