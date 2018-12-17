@@ -75,7 +75,7 @@ def fix_sl(input_folders,
     for filt in filter_list:
 
         # get the images that have observations in that filter
-        obs_list = [im for im in filter_exist.keys() if filt in filter_exist[im]]
+        obs_list = [im for im in sorted(filter_exist.keys()) if filt in filter_exist[im]]
 
         # check that images exist
         if len(obs_list) == 0:
@@ -235,7 +235,9 @@ def sl_manual(sk_image, sl_image, sl_file, fix_redo=False):
             # that time isn't in the table
             # -> do the calculations
             if tstart in sl_data['tstart'] and fix_redo == True:
-                print('starting manual corrections for extension '+str(i))
+                print('\nstarting manual corrections for extension '+str(i))
+                print('   larger exp_param -> more prominent circle')
+                print('   larger flat_param -> steeper radial gradient')
                 ind = np.where(tstart == sl_data['tstart'])[0][0]
                 exp_param, flat_param = run_manual(hdu_sk[i], hdu_sl[i], sl_data['exp_param'][ind],
                                                        sl_data['flat_param'][ind])
@@ -243,7 +245,9 @@ def sl_manual(sk_image, sl_image, sl_file, fix_redo=False):
                 sl_data['flat_param'][ind] = flat_param                
                 sl_data.write(sl_file, format='ascii', overwrite=True)
             elif tstart not in sl_data['tstart']:
-                print('starting manual corrections for extension '+str(i))
+                print('\nstarting manual corrections for extension '+str(i))
+                print('   larger exp_param -> more prominent circle')
+                print('   larger flat_param -> steeper radial gradient')
                 #exp_param, flat_param = run_manual(hdu_sk[i], hdu_sl[i], 1.5, 0.35)
                 exp_param, flat_param = run_manual(hdu_sk[i], hdu_sl[i], 1.2, 0.4)
                 sl_data.add_row([tstart, exp_param, flat_param])
@@ -283,6 +287,17 @@ def run_manual(hdu_sk, hdu_sl, exp_param, flat_param):
     kernel = Gaussian2DKernel(8)
     hdu_sk_smooth = copy.copy(hdu_sk)
     hdu_sk_smooth.data = convolve(hdu_sk.data, kernel)
+    # set up min/max
+    #vmin = np.percentile(hdu_sk_smooth.data[hdu_sk_smooth.data > 0], 2)
+    #vmin = biweight_location(hdu_sk_smooth.data[hdu_sk_smooth.data > 0])/1.5
+    #vmin = biweight_location(hdu_sk_smooth.data[hdu_sk_smooth.data > 0]) \
+    #       - biweight_midvariance(hdu_sk_smooth.data[hdu_sk_smooth.data > 0])
+    filt = sigma_clip(hdu_sk_smooth.data[hdu_sk_smooth.data > 0], sigma=2, iters=3)
+    vmin = np.mean(filt.data[~filt.mask]) - 2.5*np.std(filt.data[~filt.mask])
+    vmax = np.percentile(hdu_sk_smooth.data[hdu_sk_smooth.data > 0], 99)
+
+    # manually calculate log(image)
+    hdu_sk_smooth.data = log_image(hdu_sk_smooth.data, vmin, vmax)
 
     # make a copy to hold new smoothed images
     hdu_sk_smooth_new = copy.copy(hdu_sk)
@@ -294,19 +309,15 @@ def run_manual(hdu_sk, hdu_sl, exp_param, flat_param):
         fig = plt.figure(figsize=(10,5),
                              num='exp_param='+str(exp_param)+', flat_param='+str(flat_param))
         
+ 
         # plot original
         f = aplpy.FITSFigure(hdu_sk_smooth, figure=fig,
                                 subplot=[0, 0, 0.45, 1] )
-        #vmin = np.percentile(hdu_sk_smooth.data[hdu_sk_smooth.data > 0], 2)
-        #vmin = biweight_location(hdu_sk_smooth.data[hdu_sk_smooth.data > 0])/1.5
-        #vmin = biweight_location(hdu_sk_smooth.data[hdu_sk_smooth.data > 0]) \
-        #       - biweight_midvariance(hdu_sk_smooth.data[hdu_sk_smooth.data > 0])
-        filt = sigma_clip(hdu_sk_smooth.data[hdu_sk_smooth.data > 0], sigma=2, iters=3)
-        vmin = np.mean(filt.data[~filt.mask]) - 3*np.std(filt.data[~filt.mask])
-        vmax = np.percentile(hdu_sk_smooth.data[hdu_sk_smooth.data > 0], 99)
 
-        vmax = np.percentile(hdu_sk_smooth.data[hdu_sk_smooth.data > 0], 99)
-        f.show_colorscale(cmap='magma', stretch='log', vmin=vmin, vmax=vmax)
+        im_scale = [np.nanmin(hdu_sk_smooth.data), np.nanmax(hdu_sk_smooth.data)]
+                                
+        #f.show_colorscale(cmap='magma', stretch='log', vmin=vmin, vmax=vmax)
+        f.show_colorscale(cmap='magma', stretch='linear', vmin=im_scale[0], vmax=im_scale[1])
         f.hide_xaxis_label()
         f.hide_xtick_labels()
         f.hide_yaxis_label()
@@ -322,13 +333,16 @@ def run_manual(hdu_sk, hdu_sl, exp_param, flat_param):
         # smooth new image for displaying
         hdu_sk_smooth_new.data = convolve(new_image, kernel)
 
+        # manually calculate log(image)
+        hdu_sk_smooth_new.data = log_image(hdu_sk_smooth_new.data, vmin, vmax)
         
         # plot the new image
         f = aplpy.FITSFigure(hdu_sk_smooth_new, figure=fig,
                                 subplot=[0.5, 0, 0.45, 1] )
         #vmin = np.percentile(hdu_sk_smooth_new.data[hdu_sk_smooth.data > 0], 2)
         #vmin = biweight_location(hdu_sk_smooth_new.data[hdu_sk_smooth_new.data > 0])
-        f.show_colorscale(cmap='magma', stretch='log', vmin=vmin, vmax=vmax)
+        #f.show_colorscale(cmap='magma', stretch='log', vmin=vmin, vmax=vmax)
+        f.show_colorscale(cmap='magma', stretch='linear', vmin=im_scale[0], vmax=im_scale[1])
         f.hide_xaxis_label()
         f.hide_xtick_labels()
         f.hide_yaxis_label()
@@ -343,7 +357,7 @@ def run_manual(hdu_sk, hdu_sl, exp_param, flat_param):
 
         # parse input
         input_parse = [i for i in input_info.replace(',',' ').split(' ') if i != '']
-        if len(input_parse) == 1:
+        if (len(input_parse) == 0) or (len(input_parse) == 1):
             break
         if len(input_parse) == 2:
             exp_param = float(input_parse[0])
@@ -352,30 +366,51 @@ def run_manual(hdu_sk, hdu_sl, exp_param, flat_param):
 
     # return the results
     return exp_param, flat_param
+
+
+def log_image(image, min_val, max_val, ds9_a=1000):
+    """
+    Use the ds9 formalism to calculate a log (since aplpy log isn't playing nicely with negatives)
+    """
+
+    # set everything below/above min/max to min/max
+    image[image < min_val] = min_val
+    image[image > max_val] = max_val
+
+    # normalize to 0-1
+    image = (image - min_val)/(max_val - min_val)
+
+    # take log
+    return np.log10(ds9_a * image + 1)/np.log10(ds9_a)
     
+    
+
 
 def calc_counts_image(sk_array, sl_array, exp_param, flat_param):
     """
     The math calculation:
     using the counts and SL images, output the new corrected counts image
     """
-    
+
+    # copy the SL array so the original isn't modified (grumble grumble)
+    sl_copy = sl_array.copy()
+
     # - ignore the giant 0 border
-    fov = np.where(sl_array > 0)
-        
+    fov = np.where(sl_copy > 0)
+    
     # - subtract the minimum
-    sl_array[fov] -= np.min(sl_array[fov])
+    sl_copy[fov] -= np.min(sl_copy[fov])
     # - make the circle more prominent relative to bg
-    sl_array[fov] = exp_param**sl_array[fov]
+    sl_copy[fov] = exp_param**sl_copy[fov]
     # - make the mean = 1
-    sl_array = sl_array / np.mean(sl_array[fov])
+    sl_copy = sl_copy / np.mean(sl_copy[fov])
     # - flatten it
-    m = np.mean(sl_array[fov])
-    sl_array -= m
-    sl_array *= flat_param
-    sl_array += m
+    m = np.mean(sl_copy[fov])
+    sl_copy -= m
+    sl_copy *= flat_param
+    sl_copy += m
         
     # make a new image: counts / scattered light
-    new_image = sk_array / sl_array
+    new_image = sk_array / sl_copy
 
     return new_image
