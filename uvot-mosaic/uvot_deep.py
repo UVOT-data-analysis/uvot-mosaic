@@ -256,7 +256,8 @@ def append_ext(hdu_all, new_fits_file, image_info):
         for i in range(1,len(hdu_new)):
             dict_ind = i-len(hdu_new)
             if (image_info['binning'][dict_ind] == 2) & \
-               ((image_info['aspect_corr'][dict_ind] == 'DIRECT') | (image_info['aspect_corr'][dict_ind] == 'UNICORR')):
+               ((image_info['aspect_corr'][dict_ind] == 'DIRECT') | (image_info['aspect_corr'][dict_ind] == 'UNICORR')) & \
+               (image_info['frame_time'][dict_ind] == 0.0110322):
                 hdu_all.append(fits.ImageHDU(data=hdu_new[i].data, header=hdu_new[i].header))
 
 
